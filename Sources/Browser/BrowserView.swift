@@ -100,8 +100,11 @@ struct BrowserView: UIViewRepresentable {
 
             let rules: [[String: Any]] = config.denylist.map { host in
                 let escaped = NSRegularExpression.escapedPattern(for: host.lowercased())
+                // WebKit's content-blocker regex has no alternation, so `(/|$)` is
+                // rejected. URLs are normalized with a path, so the host is always
+                // followed by a port or a slash.
                 return [
-                    "trigger": ["url-filter": "^[a-z]+://([^/]*\\.)?\(escaped)(/|$)", "url-filter-is-case-sensitive": false],
+                    "trigger": ["url-filter": "^[a-z]+://([^/]*\\.)?\(escaped)[:/]", "url-filter-is-case-sensitive": false],
                     "action": ["type": "block"],
                 ]
             }
