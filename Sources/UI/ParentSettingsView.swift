@@ -1,0 +1,207 @@
+import SwiftUI
+
+/// PIN-protected configuration screen. Everything here round-trips through
+/// `GateConfig` JSON so a parent can also just paste a config exported from
+/// another device or hosted on the NAS.
+struct ParentSettingsView: View {
+    @Environment(ConfigStore.self) private var store
+    @Environment(NetworkGate.self) private var gate
+    @Environment(ActivityLogger.self) private var logger
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var draft: GateConfig = .default
+    @State private var probeText = ""
+    @State private var proxyEnabled = false
+    @State private var proxyKind: GateConfig.ProxyConfig.Kind = .socks5
+    @State private var proxyHost = ""
+    @State private var proxyPort = "1080"
+    @State private var allowText = ""
+    @State private var denyText = ""
+    @State private var homeText = ""
+    @State private var logText = ""
+    @State private var newPIN = ""
+    @State private var importText = ""
+    @State private var importURLText = ""
+    @State private var importError: String?
+    @State private var showLog = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if store.isManaged {
+                    Section {
+                        Label("Configuration is managed by your MDM and can't be edited here.", systemImage: "lock.shield")
+                    }
+                }
+
+                Section("Home network gate") {
+                    TextField("Probe URL (leave empty to disable)", text: $probeText)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Stepper("Check every \(Int(draft.probeIntervalSeconds))s",
+                            value: $draft.probeIntervalSeconds, in: 5...300, step: 5)
+                    LabeledContent("Status", value: statusText)
+                }
+
+                Section("Proxy") {
+                    Toggle("Pin all traffic through a proxy", isOn: $proxyEnabled)
+                    if proxyEnabled {
+                        Picker("Type", selection: $proxyKind) {
+                            Text("SOCKS5").tag(GateConfig.ProxyConfig.Kind.socks5)
+                            Text("HTTP CONNECT").tag(GateConfig.ProxyConfig.Kind.http)
+                        }
+                        TextField("Host (e.g. 100.101.102.103)", text: $proxyHost)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField("Port", text: $proxyPort).keyboardType(.numberPad)
+                    }
+                }
+
+                Section {
+                    TextField("Allowed hosts, one per line (empty = allow all)", text: $allowText, axis: .vertical)
+                        .lineLimit(3...8).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Blocked hosts, one per line", text: $denyText, axis: .vertical)
+                        .lineLimit(3...8).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Toggle("Force strict safe search", isOn: $draft.enforceSafeSearch)
+                } header: { Text("Sites") } footer: {
+                    Text("Subdomains match automatically. Blocked hosts win over allowed hosts.")
+                }
+
+                Section("General") {
+                    TextField("Home page", text: $homeText)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Log endpoint (optional)", text: $logText)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button("View local activity log") { showLog = true }
+                }
+
+                Section("Parent PIN") {
+                    SecureField(store.config.parentPINHash == nil ? "Set a PIN" : "New PIN (blank keeps current)", text: $newPIN)
+                        .keyboardType(.numberPad)
+                    if store.config.parentPINHash != nil {
+                        Button("Remove PIN", role: .destructive) { store.set(pin: nil) }
+                    }
+                }
+
+                Section("Import / export") {
+                    TextField("Config URL (e.g. http://nas.tailnet/hearth.json)", text: $importURLText)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button("Fetch config from URL") { fetchConfig() }
+                        .disabled(importURLText.isEmpty)
+                    TextField("Paste config JSON", text: $importText, axis: .vertical)
+                        .lineLimit(3...10).font(.system(.footnote, design: .monospaced))
+                    Button("Import pasted JSON") { importPasted() }
+                        .disabled(importText.isEmpty)
+                    ShareLink(item: store.exportJSON()) { Label("Export current config", systemImage: "square.and.arrow.up") }
+                    if let importError {
+                        Text(importError).foregroundStyle(.red).font(.footnote)
+                    }
+                }
+            }
+            .disabled(store.isManaged)
+            .navigationTitle("Parent settings")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() } }
+            }
+            .sheet(isPresented: $showLog) { ActivityLogView() }
+            .onAppear(perform: loadDraft)
+        }
+    }
+
+    private var statusText: String {
+        switch gate.state {
+        case .open: return "Gate disabled"
+        case .checking: return "Checking…"
+        case .connected: return "Connected to home"
+        case .disconnected: return "Not connected"
+        }
+    }
+
+    private func loadDraft() {
+        draft = store.config
+        probeText = draft.probeURL?.absoluteString ?? ""
+        proxyEnabled = draft.proxy != nil
+        proxyKind = draft.proxy?.kind ?? .socks5
+        proxyHost = draft.proxy?.host ?? ""
+        proxyPort = draft.proxy.map { String($0.port) } ?? "1080"
+        allowText = draft.allowlist.joined(separator: "\n")
+        denyText = draft.denylist.joined(separator: "\n")
+        homeText = draft.homeURL.absoluteString
+        logText = draft.logEndpoint?.absoluteString ?? ""
+        importText = ""
+        importError = nil
+    }
+
+    private func save() {
+        var cfg = draft
+        cfg.probeURL = URL(string: probeText.trimmingCharacters(in: .whitespaces)).flatMap { $0.host == nil ? nil : $0 }
+        cfg.proxy = proxyEnabled && !proxyHost.isEmpty
+            ? GateConfig.ProxyConfig(kind: proxyKind, host: proxyHost.trimmingCharacters(in: .whitespaces),
+                                     port: UInt16(proxyPort) ?? 1080)
+            : nil
+        cfg.allowlist = lines(allowText)
+        cfg.denylist = lines(denyText)
+        if let home = URL(string: homeText.trimmingCharacters(in: .whitespaces)), home.host != nil { cfg.homeURL = home }
+        cfg.logEndpoint = URL(string: logText.trimmingCharacters(in: .whitespaces)).flatMap { $0.host == nil ? nil : $0 }
+        cfg.parentPINHash = store.config.parentPINHash
+        store.update(cfg)
+        if !newPIN.isEmpty { store.set(pin: newPIN) }
+        dismiss()
+    }
+
+    private func lines(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty }
+    }
+
+    private func importPasted() {
+        do {
+            try store.importJSON(importText)
+            loadDraft()
+        } catch {
+            importError = "Couldn't parse that JSON: \(error.localizedDescription)"
+        }
+    }
+
+    private func fetchConfig() {
+        guard let url = URL(string: importURLText.trimmingCharacters(in: .whitespaces)) else {
+            importError = "That doesn't look like a URL"; return
+        }
+        Task {
+            do {
+                try await store.importFrom(url: url)
+                loadDraft()
+            } catch {
+                importError = "Fetch failed: \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+struct ActivityLogView: View {
+    @Environment(ActivityLogger.self) private var logger
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(logger.entries) { entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.url).font(.footnote).lineLimit(2)
+                    HStack {
+                        Text(entry.timestamp.formatted(date: .abbreviated, time: .shortened))
+                        if !entry.allowed {
+                            Text("blocked" + (entry.reason.map { " · \($0)" } ?? ""))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Activity")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .destructiveAction) { Button("Clear") { logger.clearLocal() } }
+            }
+        }
+    }
+}

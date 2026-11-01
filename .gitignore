@@ -1,0 +1,7 @@
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+.DS_Store
+server/logs/data/
+Info.plist

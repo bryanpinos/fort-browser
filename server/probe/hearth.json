@@ -1,0 +1,15 @@
+{
+  "probeURL": "http://100.0.0.1:8088/ok",
+  "probeIntervalSeconds": 15,
+  "proxy": { "kind": "http", "host": "100.0.0.1", "port": 3128 },
+  "allowlist": [],
+  "denylist": [
+    "tiktok.com",
+    "discord.com",
+    "reddit.com"
+  ],
+  "enforceSafeSearch": true,
+  "homeURL": "https://www.wikipedia.org",
+  "logEndpoint": "http://100.0.0.1:8089/log",
+  "parentPINHash": null
+}
