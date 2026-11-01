@@ -19,6 +19,7 @@ struct ParentSettingsView: View {
     @State private var denyText = ""
     @State private var homeText = ""
     @State private var logText = ""
+    @State private var deviceNameText = ""
     @State private var newPIN = ""
     @State private var importText = ""
     @State private var importURLText = ""
@@ -71,6 +72,13 @@ struct ParentSettingsView: View {
                     TextField("Log endpoint (optional)", text: $logText)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("View local activity log") { showLog = true }
+                }
+
+                Section {
+                    TextField("Device name (e.g. Ava's iPad)", text: $deviceNameText)
+                        .autocorrectionDisabled()
+                } header: { Text("This device") } footer: {
+                    Text("Sent with activity logs so you can tell devices apart. Stays on this device: importing or exporting a config doesn't change it.")
                 }
 
                 Section("Parent PIN") {
@@ -127,6 +135,7 @@ struct ParentSettingsView: View {
         denyText = draft.denylist.joined(separator: "\n")
         homeText = draft.homeURL.absoluteString
         logText = draft.logEndpoint?.absoluteString ?? ""
+        deviceNameText = store.deviceName
         importText = ""
         importError = nil
     }
@@ -144,6 +153,7 @@ struct ParentSettingsView: View {
         cfg.logEndpoint = URL(string: logText.trimmingCharacters(in: .whitespaces)).flatMap { $0.host == nil ? nil : $0 }
         cfg.parentPINHash = store.config.parentPINHash
         store.update(cfg)
+        store.set(deviceName: deviceNameText)
         if !newPIN.isEmpty { store.set(pin: newPIN) }
         dismiss()
     }

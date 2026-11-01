@@ -11,7 +11,9 @@ struct HearthApp: App {
         let store = ConfigStore()
         _store = State(initialValue: store)
         _gate = State(initialValue: NetworkGate(config: store.config))
-        _logger = State(initialValue: ActivityLogger(endpoint: store.config.logEndpoint))
+        let logger = ActivityLogger(endpoint: store.config.logEndpoint)
+        logger.deviceName = store.deviceName
+        _logger = State(initialValue: logger)
     }
 
     var body: some Scene {

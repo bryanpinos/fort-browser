@@ -44,6 +44,9 @@ struct ContentView: View {
             gate.apply(config: newValue)
             logger.apply(endpoint: newValue.logEndpoint)
         }
+        .onChange(of: store.deviceName) { _, newValue in
+            logger.deviceName = newValue
+        }
     }
 
     private var addressBar: some View {

@@ -24,7 +24,7 @@ final class HearthUITests: XCTestCase {
         let data = try! JSONSerialization.data(withJSONObject: cfg)
         let hex = data.map { String(format: "%02x", $0) }.joined()
         let app = XCUIApplication()
-        app.launchArguments = ["-hearth.config.json", "<\(hex)>"]
+        app.launchArguments = ["-hearth.config.json", "<\(hex)>", "-hearth.deviceName", ""]
         app.launch()
         return app
     }
@@ -136,6 +136,24 @@ final class HearthUITests: XCTestCase {
 
         app.buttons["Parent settings"].tap()
         XCTAssertTrue(app.staticTexts["Parent PIN"].waitForExistence(timeout: 5))
+    }
+
+    func testDeviceNameIsSavedFromSettings() {
+        let app = launch([:])
+        app.buttons["Parent settings"].tap()
+        XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5))
+
+        let field = app.textFields["Device name (e.g. Ava's iPad)"]
+        scrollTo(field, in: app)
+        field.tap()
+        field.typeText("Ava's iPad")
+        app.navigationBars["Parent settings"].buttons["Save"].tap()
+
+        app.buttons["Parent settings"].tap()
+        XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5))
+        let reopened = app.textFields["Device name (e.g. Ava's iPad)"]
+        scrollTo(reopened, in: app)
+        XCTAssertEqual(reopened.value as? String, "Ava's iPad")
     }
 
     /// Needs internet: Google must answer for the rewritten URL to show.

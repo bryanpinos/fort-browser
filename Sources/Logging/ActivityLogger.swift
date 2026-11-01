@@ -14,6 +14,9 @@ final class ActivityLogger {
         var reason: String?
     }
 
+    /// Parent-assigned name for this device; see `ConfigStore.deviceName`.
+    var deviceName: String = ""
+
     private(set) var entries: [Entry] = []
     private let maxLocalEntries = 500
 
@@ -60,7 +63,7 @@ final class ActivityLogger {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        request.httpBody = try? encoder.encode(Batch(device: deviceName, entries: batch))
+        request.httpBody = try? encoder.encode(Batch(device: reportedDeviceName, entries: batch))
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -71,9 +74,15 @@ final class ActivityLogger {
         }
     }
 
-    private var deviceName: String {
+    /// The parent-assigned name, or model plus a stable per-install suffix.
+    /// `UIDevice.name` isn't used: since iOS 16 it returns just "iPad" without a
+    /// special entitlement, so two iPads would be indistinguishable.
+    @MainActor
+    var reportedDeviceName: String {
+        if !deviceName.isEmpty { return deviceName }
         #if canImport(UIKit)
-        return UIDevice.current.name
+        let suffix = UIDevice.current.identifierForVendor?.uuidString.prefix(8) ?? "unknown"
+        return "\(UIDevice.current.model)-\(suffix)"
         #else
         return "unknown"
         #endif

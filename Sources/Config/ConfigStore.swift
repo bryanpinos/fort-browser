@@ -11,10 +11,17 @@ final class ConfigStore {
     private(set) var config: GateConfig
     private(set) var isManaged: Bool
 
+    /// Per-device label sent with activity logs (e.g. "Ava's iPad"). Kept out of
+    /// `GateConfig` so importing one shared hearth.json on every iPad doesn't
+    /// overwrite it, and it isn't exported. Empty means "not set".
+    private(set) var deviceName: String
+
     private static let localKey = "hearth.config.json"
     private static let managedKey = "com.apple.configuration.managed"
+    private static let deviceNameKey = "hearth.deviceName"
 
     init() {
+        deviceName = UserDefaults.standard.string(forKey: ConfigStore.deviceNameKey) ?? ""
         if let managed = ConfigStore.loadManaged() {
             config = managed
             isManaged = true
@@ -53,6 +60,11 @@ final class ConfigStore {
     func exportJSON() -> String {
         guard let data = try? JSONEncoder.pretty.encode(config) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    func set(deviceName name: String) {
+        deviceName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        UserDefaults.standard.set(deviceName, forKey: ConfigStore.deviceNameKey)
     }
 
     // MARK: PIN
