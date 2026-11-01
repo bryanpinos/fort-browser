@@ -61,6 +61,11 @@ struct BrowserView: UIViewRepresentable {
         switch proxy.kind {
         case .socks5: return ProxyConfiguration(socksv5Proxy: endpoint)
         case .http:   return ProxyConfiguration(httpCONNECTProxy: endpoint)
+        case .relay:
+            let headers = proxy.authToken.map { ["x-hearth-token": $0] } ?? [:]
+            return ProxyConfiguration(relayHops: [
+                .init(http2RelayEndpoint: endpoint, additionalHTTPHeaderFields: headers),
+            ])
         }
     }
 

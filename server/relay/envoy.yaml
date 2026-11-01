@@ -1,0 +1,65 @@
+# Spike: HTTP/2 MASQUE-style relay (CONNECT over TLS) for Hearth.
+# Only authenticated CONNECTs to ports 80/443 are tunneled.
+admin:
+  address: {socket_address: {address: 127.0.0.1, port_value: 9901}}
+static_resources:
+  listeners:
+  - name: relay
+    address: {socket_address: {address: 0.0.0.0, port_value: 8443}}
+    filter_chains:
+    - transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            alpn_protocols: [h2]
+            tls_certificates:
+            - certificate_chain: {filename: /certs/relay.pem}
+              private_key: {filename: /certs/relay.key}
+      filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: relay
+          codec_type: HTTP2
+          http2_protocol_options: {allow_connect: true}
+          upgrade_configs: [{upgrade_type: CONNECT}]
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              log_format:
+                text_format_source:
+                  inline_string: "ACCESS %PROTOCOL% %REQ(:METHOD)% proto=%REQ(:PROTOCOL)% authority=%REQ(:AUTHORITY)% path=%REQ(:PATH)% status=%RESPONSE_CODE% flags=%RESPONSE_FLAGS% up=%UPSTREAM_HOST% tx=%BYTES_SENT%\n"
+          route_config:
+            virtual_hosts:
+            - name: relay
+              domains: ["*"]
+              routes:
+              - match:
+                  connect_matcher: {}
+                  headers:
+                  - {name: x-hearth-token, string_match: {exact: "CHANGE_ME_TOKEN"}}
+                  - {name: ":authority", string_match: {safe_regex: {regex: ".*:(80|443)"}}}
+                route:
+                  cluster: dfp
+                  upgrade_configs: [{upgrade_type: CONNECT, connect_config: {}}]
+              - match: {connect_matcher: {}}
+                direct_response: {status: 407}
+              - match: {prefix: "/"}
+                direct_response: {status: 404}
+          http_filters:
+          - name: envoy.filters.http.dynamic_forward_proxy
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+              dns_cache_config: {name: dfp_cache, dns_lookup_family: V4_PREFERRED}
+          - name: envoy.filters.http.router
+            typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router}
+  clusters:
+  - name: dfp
+    lb_policy: CLUSTER_PROVIDED
+    cluster_type:
+      name: envoy.clusters.dynamic_forward_proxy
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
+        dns_cache_config: {name: dfp_cache, dns_lookup_family: V4_PREFERRED}

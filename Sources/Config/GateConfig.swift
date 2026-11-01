@@ -38,10 +38,14 @@ struct GateConfig: Codable, Equatable {
     var parentPINHash: String?
 
     struct ProxyConfig: Codable, Equatable {
-        enum Kind: String, Codable { case socks5, http }
+        /// `relay` is an Apple network relay (CONNECT over TLS + HTTP/2):
+        /// encrypted and authenticated, so it can sit on the open internet.
+        enum Kind: String, Codable { case socks5, http, relay }
         var kind: Kind
         var host: String
         var port: UInt16
+        /// Sent as `x-hearth-token` on every relay request. Relay only.
+        var authToken: String? = nil
     }
 
     static let `default` = GateConfig()
