@@ -27,6 +27,9 @@ targets:
         optional: true
     entitlements:
       path: Hearth.entitlements
+    scheme:
+      testTargets:
+        - GateConfigTests
     info:
       path: Info.plist
       properties:
@@ -56,3 +59,14 @@ targets:
           # Probe/proxy/log endpoints on the tailnet are usually plain http.
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoadsInWebContent: true
+
+  GateConfigTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/GateConfigTests
+    dependencies:
+      - target: Hearth
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
