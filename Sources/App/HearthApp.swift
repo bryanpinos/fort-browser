@@ -5,6 +5,7 @@ struct HearthApp: App {
     @State private var store: ConfigStore
     @State private var gate: NetworkGate
     @State private var logger: ActivityLogger
+    @State private var forwarder = RelayForwarder()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -22,10 +23,16 @@ struct HearthApp: App {
                 .environment(store)
                 .environment(gate)
                 .environment(logger)
-                .onAppear { gate.start() }
+                .environment(forwarder)
+                .onAppear {
+                    forwarder.apply(store.config)
+                    gate.start()
+                }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
-                    case .active: gate.start()
+                    case .active:
+                        forwarder.ensureListening()
+                        gate.start()
                     case .background:
                         gate.stop()
                         Task { await logger.flush() }
