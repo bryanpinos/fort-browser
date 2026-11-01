@@ -5,3 +5,4 @@ DerivedData/
 .DS_Store
 server/logs/data/
 Info.plist
+build/
