@@ -1,0 +1,4 @@
+*.xcodeproj
+App/Info.plist
+App/client.p12
+build/
