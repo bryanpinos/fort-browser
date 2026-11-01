@@ -30,6 +30,7 @@ targets:
     scheme:
       testTargets:
         - GateConfigTests
+        - HearthUITests
     info:
       path: Info.plist
       properties:
@@ -65,6 +66,17 @@ targets:
     platform: iOS
     sources:
       - Tests/GateConfigTests
+    dependencies:
+      - target: Hearth
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+  HearthUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/HearthUITests
     dependencies:
       - target: Hearth
     settings:
