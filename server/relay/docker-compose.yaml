@@ -28,6 +28,8 @@ services:
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
       - ./certs:/certs:ro
+      - ./ca:/ca:ro                      # fort-ca.crt (public)
+      - ./clients:/etc/envoy/clients:ro  # clients.yaml: device allowlist
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

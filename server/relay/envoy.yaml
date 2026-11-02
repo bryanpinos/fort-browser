@@ -2,6 +2,11 @@
 # Fort browser. The app pins all WKWebView traffic here via
 # ProxyConfiguration(relayHops:) and sends the token as x-fort-token.
 #
+# Mutual TLS: the handshake requires a client cert signed by the Fort client CA
+# whose URI SAN is on the allowlist in clients/clients.yaml (an SDS file Envoy
+# watches, so revoking a device is an edit + atomic rename, no restart). Clients
+# without one never reach the HTTP layer. The token is a second check.
+#
 # Route order matters:
 #   1. wrong/missing token          -> 407
 #   2. private / internal targets   -> 403 (a leaked token must not reach the LAN)
@@ -12,6 +17,9 @@
 # also isolate the relay's egress at the network layer (own VLAN + firewall).
 #
 # CHANGE_ME_TOKEN is replaced at deploy time; never commit the real token.
+
+# Envoy requires a node identity to use file-based SDS (clients.yaml).
+node: {id: fort-relay, cluster: fort-relay}
 
 # The private/internal deny-list regex compiles to ~145 RE2 instructions;
 # Envoy's default ceiling is 100.
@@ -38,9 +46,16 @@ static_resources:
         name: envoy.transport_sockets.tls
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          require_client_certificate: true
           common_tls_context:
             alpn_protocols: [h2]
             tls_params: {tls_minimum_protocol_version: TLSv1_2}
+            validation_context_sds_secret_config:
+              name: fort_clients
+              sds_config:
+                path_config_source:
+                  path: /etc/envoy/clients/clients.yaml
+                  watched_directory: {path: /etc/envoy/clients}
             tls_certificates:
             - certificate_chain: {filename: /certs/relay.crt}
               private_key: {filename: /certs/relay.key}
@@ -65,7 +80,7 @@ static_resources:
               "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
               log_format:
                 text_format_source:
-                  inline_string: "%START_TIME% %DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT% %REQ(:METHOD)% %REQ(:AUTHORITY)% %RESPONSE_CODE% %RESPONSE_FLAGS% up=%UPSTREAM_HOST% rx=%BYTES_RECEIVED% tx=%BYTES_SENT% dur=%DURATION%\n"
+                  inline_string: "%START_TIME% %DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT% peer=%DOWNSTREAM_PEER_URI_SAN% %REQ(:METHOD)% %REQ(:AUTHORITY)% %RESPONSE_CODE% %RESPONSE_FLAGS% up=%UPSTREAM_HOST% rx=%BYTES_RECEIVED% tx=%BYTES_SENT% dur=%DURATION%\n"
           route_config:
             virtual_hosts:
             - name: relay

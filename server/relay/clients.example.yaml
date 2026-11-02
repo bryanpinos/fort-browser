@@ -1,0 +1,17 @@
+# Device allowlist for the relay's mutual TLS. Deploy as clients/clients.yaml
+# next to docker-compose.yaml (not committed: device IDs can name the kids).
+#
+# A device gets in only if its cert is signed by the Fort client CA AND its
+# URI SAN is listed here. To revoke a device: remove its line, then replace the
+# file with an atomic rename so Envoy reloads it:
+#   cp clients/clients.yaml /tmp/c.yaml && edit /tmp/c.yaml && mv /tmp/c.yaml clients/clients.yaml
+resources:
+- "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret
+  name: fort_clients
+  validation_context:
+    trusted_ca: {filename: /ca/fort-ca.crt}
+    match_typed_subject_alt_names:
+    - san_type: URI
+      matcher: {exact: "spiffe://pinos.dev/fort/device/kid1-ipad"}
+    - san_type: URI
+      matcher: {exact: "spiffe://pinos.dev/fort/device/kid2-ipad"}

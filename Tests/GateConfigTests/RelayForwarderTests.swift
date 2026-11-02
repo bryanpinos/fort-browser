@@ -109,16 +109,18 @@ final class RelayForwarderLoopbackTests: XCTestCase {
 }
 
 /// Needs a local Envoy relay that requires client certs. Skipped unless the
-/// runner passes TEST_RUNNER_FORT_P12 (base64 PKCS#12, password "spike")
-/// and TEST_RUNNER_FORT_TOKEN.
+/// runner passes TEST_RUNNER_FORT_P12 (base64 PKCS#12) and TEST_RUNNER_FORT_TOKEN.
+/// Optional: TEST_RUNNER_FORT_P12_PASSWORD (default "spike"),
+/// TEST_RUNNER_FORT_RELAY_HOST / _PORT (default localhost:8443).
 final class RelayForwarderMTLSIntegrationTests: XCTestCase {
 
     func testURLSessionThroughForwarderReachesSiteWithClientCert() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let p12 = env["FORT_P12"] else { throw XCTSkip("no spike env") }
         var cfg = GateConfig()
-        cfg.proxy = .init(kind: .relay, host: "localhost", port: 8443, authToken: env["FORT_TOKEN"],
-                          clientIdentity: .init(pkcs12Base64: p12, password: "spike"))
+        cfg.proxy = .init(kind: .relay, host: env["FORT_RELAY_HOST"] ?? "localhost",
+                          port: UInt16(env["FORT_RELAY_PORT"] ?? "") ?? 8443, authToken: env["FORT_TOKEN"],
+                          clientIdentity: .init(pkcs12Base64: p12, password: env["FORT_P12_PASSWORD"] ?? "spike"))
         let forwarder = RelayForwarder()
         await MainActor.run { forwarder.apply(cfg) }
         defer { forwarder.stop() }
