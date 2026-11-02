@@ -2,6 +2,14 @@ import Foundation
 import Network
 import Observation
 
+/// Debug-build-only trace for diagnosing the forwarder on a device
+/// (`devicectl device process launch --console`). Compiled out of release.
+@inline(__always) func forwarderTrace(_ message: @autoclosure () -> String) {
+    #if DEBUG
+    print("FORT-FWD \(message())")
+    #endif
+}
+
 /// Loopback CONNECT proxy that lets WKWebView use a relay requiring mutual TLS.
 ///
 /// WKWebView's own relay support never presents a client certificate: proxy
@@ -79,8 +87,10 @@ final class RelayForwarder {
             guard let self, let l else { return }
             switch state {
             case .ready:
+                forwarderTrace("listening on \(l.port?.rawValue ?? 0)")
                 self.setPort(l.port?.rawValue)
             case .failed, .cancelled:
+                forwarderTrace("listener \(state)")
                 self.setPort(nil)
                 if case .failed = state {
                     // Try again shortly with a fresh port; WebKit fails closed meanwhile.
@@ -101,6 +111,7 @@ final class RelayForwarder {
 
     private func accept(_ client: NWConnection) {
         guard activeTunnels < Self.maxTunnels, let context else { client.cancel(); return }
+        forwarderTrace("accepted connection (\(activeTunnels + 1) active)")
         activeTunnels += 1
         let tunnel = Tunnel(client: client, context: context, queue: queue,
                             expectedAuth: Self.basicAuth(username, password)) { [weak self] in
@@ -199,7 +210,13 @@ private final class Tunnel {
     }
 
     private func handle(_ headText: String, leftover: Data) {
-        switch RelayForwarder.parse(head: headText) {
+        let parsed = RelayForwarder.parse(head: headText)
+        if case .success(let r) = parsed {
+            forwarderTrace("CONNECT \(r.host):\(r.port) auth=\(r.proxyAuthorization == expectedAuth ? "ok" : (r.proxyAuthorization == nil ? "none" : "wrong"))")
+        } else {
+            forwarderTrace("request rejected: \(parsed)")
+        }
+        switch parsed {
         case .failure(.notConnect): respond("405 Method Not Allowed")
         case .failure(.portNotAllowed): respond("403 Forbidden")
         case .failure: respond("400 Bad Request")
@@ -220,6 +237,7 @@ private final class Tunnel {
         let up = NWConnection(host: NWEndpoint.Host(req.host), port: port, using: params)
         upstream = up
         up.stateUpdateHandler = { [self] state in
+            forwarderTrace("upstream \(req.host):\(req.port) -> \(state)")
             switch state {
             case .ready:
                 established = true
@@ -278,11 +296,16 @@ private final class Tunnel {
 extension RelayForwarder {
     /// Runs the forwarder only when the config needs it (an mTLS relay).
     func apply(_ config: GateConfig) {
-        guard let proxy = config.proxy, BrowserView.usesForwarder(proxy) else { stop(); return }
+        guard let proxy = config.proxy, BrowserView.usesForwarder(proxy) else {
+            forwarderTrace("not needed for this config"); stop(); return
+        }
         let upstream = BrowserView.proxyConfiguration(for: proxy)
         // Without a loadable identity the relay would refuse us anyway; don't
         // listen, so WebKit stays on the dead port (fail closed).
-        guard proxy.clientIdentity.flatMap(BrowserView.secIdentity(from:)) != nil else { stop(); return }
+        guard proxy.clientIdentity.flatMap(BrowserView.secIdentity(from:)) != nil else {
+            forwarderTrace("client identity did NOT load; staying closed"); stop(); return
+        }
+        forwarderTrace("client identity loaded; starting")
         start(relay: upstream)
     }
 }

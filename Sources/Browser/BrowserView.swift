@@ -208,6 +208,7 @@ struct BrowserView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            forwarderTrace("page load failed: \((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)")
             model.isLoading = false
             let nsError = error as NSError
             if nsError.code != NSURLErrorCancelled {
