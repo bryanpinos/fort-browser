@@ -19,6 +19,11 @@
 #
 # CHANGE_ME_TOKEN is replaced at deploy time; never commit the real token.
 
+# Admin API on loopback only: reachable just from this container's network
+# namespace, i.e. the fort-relay-monitor sidecar (network_mode service:relay).
+admin:
+  address: {socket_address: {address: 127.0.0.1, port_value: 9901}}
+
 # Envoy requires a node identity to use file-based SDS (clients.yaml).
 node: {id: fort-relay, cluster: fort-relay}
 

@@ -37,3 +37,32 @@ services:
     mem_limit: 256m
     pids_limit: 256
     depends_on: [relay-cert]
+
+  # Envoy stats + cert expiry -> Home Assistant (MQTT discovery). Shares the
+  # relay's network namespace to reach its loopback-only admin API.
+  monitor:
+    image: python:3.12-alpine
+    container_name: fort-relay-monitor
+    restart: unless-stopped
+    network_mode: "service:relay"
+    depends_on: [relay]
+    command: ["python", "-u", "/monitor.py"]
+    environment:
+      MQTT_HOST: 192.168.1.10
+      MQTT_PORT: "1883"
+    volumes:
+      - ./monitor.py:/monitor.py:ro
+      - ./certs:/certs:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+
+# Pinned: the NAS's net-shim drops anything from this subnet to the LAN,
+# tailnet and the host (see net-shim-reassert.sh, "fort_relay" table).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
