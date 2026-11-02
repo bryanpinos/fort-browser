@@ -98,6 +98,14 @@ argument `-fort.config.json <hex>` (UserDefaults argument domain).
    content-rule JSON generation.
 6. Polish the gate overlay and blocked banner for a 9-year-old audience.
 
+## Next up (relay branch)
+- Register Fort as a handler for `.p12` (`CFBundleDocumentTypes` /
+  `UTImportedTypeDeclarations` for `com.rsa.pkcs-12`) so AirDropping a cert
+  offers "Open in Fort" instead of the iOS profile installer (today: zip it,
+  unzip in Files, then import).
+- "Connected to home" gate check through the relay instead of a direct probe.
+- Kid-friendly message when the Local Network permission was denied.
+
 ## Later / not now
 - Family Controls + ManagedSettings entitlement so Fort can shield Safari
   and other apps itself (needs Apple approval).
