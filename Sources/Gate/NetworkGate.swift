@@ -77,7 +77,7 @@ final class NetworkGate {
         guard let url = config.probeURL else { state = .open; return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Hearth/1 probe", forHTTPHeaderField: "User-Agent")
+        request.setValue("Fort/1 probe", forHTTPHeaderField: "User-Agent")
         do {
             let (_, response) = try await session.data(for: request)
             lastChecked = Date()

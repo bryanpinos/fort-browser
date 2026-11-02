@@ -109,7 +109,7 @@ struct GateOverlay: View {
         VStack(spacing: 20) {
             Image(systemName: "house.lodge")
                 .font(.system(size: 72))
-            Text("Hearth works from home")
+            Text("Fort works from home")
                 .font(.title.bold())
             Text(message)
                 .multilineTextAlignment(.center)

@@ -1,9 +1,9 @@
 import XCTest
 
 /// Drives the real app UI. Each test injects its GateConfig through the
-/// UserDefaults argument domain (`-hearth.config.json <hex>`), which overrides
+/// UserDefaults argument domain (`-fort.config.json <hex>`), which overrides
 /// whatever an earlier run saved, so no test hooks are needed in the app.
-final class HearthUITests: XCTestCase {
+final class FortUITests: XCTestCase {
 
     /// SHA-256 of "1234".
     private let pin1234Hash = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
@@ -24,7 +24,7 @@ final class HearthUITests: XCTestCase {
         let data = try! JSONSerialization.data(withJSONObject: cfg)
         let hex = data.map { String(format: "%02x", $0) }.joined()
         let app = XCUIApplication()
-        app.launchArguments = ["-hearth.config.json", "<\(hex)>", "-hearth.deviceName", ""]
+        app.launchArguments = ["-fort.config.json", "<\(hex)>", "-fort.deviceName", ""]
         app.launch()
         return app
     }
@@ -93,7 +93,7 @@ final class HearthUITests: XCTestCase {
     func testUnreachableProbeShowsGateOverlay() {
         // Port 9 (discard) is closed on the host, so the probe fails fast.
         let app = launch(["probeURL": "http://127.0.0.1:9/ok"])
-        XCTAssertTrue(app.staticTexts["Hearth works from home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Fort works from home"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Check again"].exists)
         XCTAssertTrue(app.buttons["Open Tailscale"].exists)
     }

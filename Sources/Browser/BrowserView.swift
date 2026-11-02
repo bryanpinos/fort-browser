@@ -159,7 +159,7 @@ struct BrowserView: UIViewRepresentable {
             guard let data = try? JSONSerialization.data(withJSONObject: rules),
                   let json = String(data: data, encoding: .utf8) else { return }
 
-            WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "hearth.denylist",
+            WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "fort.denylist",
                                                                     encodedContentRuleList: json) { list, error in
                 if let list { controller.add(list) }
                 else if let error { print("Content rule compile failed: \(error)") }

@@ -1,11 +1,11 @@
-# Hearth
+# Fort: Safe Home Browser
 
 **A kids' browser that only works through your home network.**
 
-Hearth is an open-source iOS/iPadOS browser for parents who already run their own
+Fort is an open-source iOS/iPadOS browser for parents who already run their own
 network: a UniFi/pfSense/Firewalla gateway, a Tailscale or WireGuard tunnel, a
 NextDNS/Pi-hole profile. Instead of shipping yet another cloud filter and a
-subscription, Hearth locks the browser to *your* infrastructure:
+subscription, Fort locks the browser to *your* infrastructure:
 
 - **Fail-closed gate.** The browser only loads pages while a parent-controlled
   URL on your tailnet answers. VPN off → blank screen with a "turn on Tailscale" button.
@@ -20,13 +20,13 @@ subscription, Hearth locks the browser to *your* infrastructure:
   from a URL on your NAS, or push via MDM AppConfig.
 
 Pair it with Screen Time (hide Safari, block app installs, set a passcode) and
-Hearth is the only door to the web on the device.
+Fort is the only door to the web on the device.
 
 > Status: early skeleton. It runs, but expect rough edges. Issues and PRs welcome.
 
 ## Why not just use …
 
-| | Hearth | Cloud "safe browsers" | DNS filtering alone |
+| | Fort | Cloud "safe browsers" | DNS filtering alone |
 |---|---|---|---|
 | Works away from home | ✅ via your VPN | ✅ | only on your Wi‑Fi (unless DoH profile) |
 | Who holds the logs | you | the vendor | you / the DNS vendor |
@@ -44,11 +44,11 @@ Hearth is the only door to the web on the device.
 ## Build
 
 ```bash
-git clone https://github.com/<you>/hearth
-cd hearth
+git clone https://github.com/<you>/fort
+cd fort
 # edit project.yml: bundleIdPrefix and DEVELOPMENT_TEAM
 xcodegen generate
-open Hearth.xcodeproj
+open Fort.xcodeproj
 ```
 
 Select your team under Signing & Capabilities, pick the iPad, Run.
@@ -57,13 +57,13 @@ Select your team under Signing & Capabilities, pick the iPad, Run.
 
 ```bash
 cd server
-# edit probe/hearth.json: replace 100.0.0.1 with the NAS's Tailscale IP
+# edit probe/fort.json: replace 100.0.0.1 with the NAS's Tailscale IP
 docker compose up -d
 ```
 
 | Service | Port | Purpose |
 |---|---|---|
-| probe | 8088 | `GET /ok` → 200; also serves `/hearth.json` for one-URL device setup |
+| probe | 8088 | `GET /ok` → 200; also serves `/fort.json` for one-URL device setup |
 | proxy | 3128 | Squid HTTP CONNECT proxy; only accepts tailnet/LAN clients |
 | logs  | 8089 | `POST /log` collector, `GET /` to eyeball the last 200 entries |
 
@@ -74,8 +74,8 @@ also sits on a network you don't fully trust.
 
 1. Install Tailscale, sign the iPad into your tailnet (a tag-only node with
    an ACL that reaches just the NAS is ideal).
-2. Open Hearth → gear icon → **Import / export → Config URL** →
-   `http://<nas-tailnet-ip>:8088/hearth.json` → Fetch → Save.
+2. Open Fort → gear icon → **Import / export → Config URL** →
+   `http://<nas-tailnet-ip>:8088/fort.json` → Fetch → Save.
 3. Set a parent PIN.
 4. Screen Time: Content & Privacy → Allowed Apps → Safari **off**;
    iTunes & App Store Purchases → Installing Apps **Don't Allow**, Deleting Apps
@@ -100,7 +100,7 @@ also sits on a network you don't fully trust.
 MDM users: push the same JSON as a string under the `config` key in managed
 app configuration; the in-app settings become read-only.
 
-## What Hearth does *not* do
+## What Fort does *not* do
 
 - It can't filter inside other apps. Screen Time's web filter covers WebKit
   views in other apps; your DNS filter covers everything else.
@@ -112,7 +112,7 @@ app configuration; the in-app settings become read-only.
 
 - [ ] QR-code config import
 - [ ] Per-kid profiles / time windows
-- [ ] Family Controls entitlement so Hearth can shield Safari and other apps itself
+- [ ] Family Controls entitlement so Fort can shield Safari and other apps itself
 - [ ] Default-browser entitlement
 - [ ] Hardened App Store build with a reviewer-friendly demo config
 - [ ] macOS (Chromium-based) sibling

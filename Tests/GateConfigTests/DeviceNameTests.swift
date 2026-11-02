@@ -1,10 +1,10 @@
 import XCTest
 import UIKit
-@testable import Hearth
+@testable import Fort
 
 final class DeviceNameStoreTests: XCTestCase {
 
-    private let keys = ["hearth.deviceName", "hearth.config.json"]
+    private let keys = ["fort.deviceName", "fort.config.json"]
     private var saved: [String: Any] = [:]
 
     override func setUp() {
