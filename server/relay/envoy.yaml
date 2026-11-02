@@ -1,6 +1,6 @@
-# Hearth relay: Apple network relay (HTTP/2 CONNECT over TLS) for the
-# Hearth browser. The app pins all WKWebView traffic here via
-# ProxyConfiguration(relayHops:) and sends the token as x-hearth-token.
+# Fort relay: Apple network relay (HTTP/2 CONNECT over TLS) for the
+# Fort browser. The app pins all WKWebView traffic here via
+# ProxyConfiguration(relayHops:) and sends the token as x-fort-token.
 #
 # Route order matters:
 #   1. wrong/missing token          -> 407
@@ -74,7 +74,7 @@ static_resources:
               - match:
                   connect_matcher: {}
                   headers:
-                  - name: x-hearth-token
+                  - name: x-fort-token
                     string_match: {exact: "CHANGE_ME_TOKEN"}
                     invert_match: true
                     treat_missing_header_as_empty: true

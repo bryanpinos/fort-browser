@@ -1,6 +1,6 @@
 import XCTest
 import Network
-@testable import Hearth
+@testable import Fort
 
 final class RelayForwarderParseTests: XCTestCase {
 
@@ -76,7 +76,7 @@ final class RelayForwarderLoopbackTests: XCTestCase {
     }
 
     func testWrongCredentialsGet407() async throws {
-        let bad = RelayForwarder.basicAuth("hearth", "guess")
+        let bad = RelayForwarder.basicAuth("fort", "guess")
         let line = try await statusLine(for: "CONNECT example.com:443 HTTP/1.1\r\nProxy-Authorization: \(bad)\r\n\r\n")
         XCTAssertEqual(line, "HTTP/1.1 407 Proxy Authentication Required")
     }
@@ -109,15 +109,15 @@ final class RelayForwarderLoopbackTests: XCTestCase {
 }
 
 /// Needs a local Envoy relay that requires client certs. Skipped unless the
-/// runner passes TEST_RUNNER_HEARTH_P12 (base64 PKCS#12, password "spike")
-/// and TEST_RUNNER_HEARTH_TOKEN.
+/// runner passes TEST_RUNNER_FORT_P12 (base64 PKCS#12, password "spike")
+/// and TEST_RUNNER_FORT_TOKEN.
 final class RelayForwarderMTLSIntegrationTests: XCTestCase {
 
     func testURLSessionThroughForwarderReachesSiteWithClientCert() async throws {
         let env = ProcessInfo.processInfo.environment
-        guard let p12 = env["HEARTH_P12"] else { throw XCTSkip("no spike env") }
+        guard let p12 = env["FORT_P12"] else { throw XCTSkip("no spike env") }
         var cfg = GateConfig()
-        cfg.proxy = .init(kind: .relay, host: "localhost", port: 8443, authToken: env["HEARTH_TOKEN"],
+        cfg.proxy = .init(kind: .relay, host: "localhost", port: 8443, authToken: env["FORT_TOKEN"],
                           clientIdentity: .init(pkcs12Base64: p12, password: "spike"))
         let forwarder = RelayForwarder()
         await MainActor.run { forwarder.apply(cfg) }

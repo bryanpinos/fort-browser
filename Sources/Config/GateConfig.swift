@@ -44,7 +44,7 @@ struct GateConfig: Codable, Equatable {
         var kind: Kind
         var host: String
         var port: UInt16
-        /// Sent as `x-hearth-token` on every relay request. Relay only.
+        /// Sent as `x-fort-token` on every relay request. Relay only.
         var authToken: String? = nil
         /// Client certificate for mutual TLS with the relay. Relay only.
         /// TODO: import into the keychain once instead, so it never travels

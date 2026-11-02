@@ -20,7 +20,7 @@ final class RelayForwarder {
 
     /// Per-launch credentials WebKit must present, so other apps on the device
     /// can't borrow the tunnel.
-    let username = "hearth"
+    let username = "fort"
     let password = UUID().uuidString
 
     @ObservationIgnored private var listener: NWListener?
@@ -28,7 +28,7 @@ final class RelayForwarder {
     @ObservationIgnored private var context: NWParameters.PrivacyContext?
     @ObservationIgnored private var activeTunnels = 0 // queue-confined
 
-    private let queue = DispatchQueue(label: "dev.pinos.hearth.relay-forwarder")
+    private let queue = DispatchQueue(label: "dev.pinos.fort.relay-forwarder")
     static let maxTunnels = 128
     static let maxHeaderBytes = 8192
     static let headerTimeout: TimeInterval = 10
@@ -40,7 +40,7 @@ final class RelayForwarder {
     func start(relay: ProxyConfiguration) {
         stop()
         self.relay = relay
-        let ctx = NWParameters.PrivacyContext(description: "Hearth relay")
+        let ctx = NWParameters.PrivacyContext(description: "Fort relay")
         ctx.proxyConfigurations = [relay]
         context = ctx
         listen()
@@ -202,7 +202,7 @@ private final class Tunnel {
         case .success(let req):
             guard req.proxyAuthorization == expectedAuth else {
                 respond("407 Proxy Authentication Required",
-                        extra: "Proxy-Authenticate: Basic realm=\"hearth\"\r\n")
+                        extra: "Proxy-Authenticate: Basic realm=\"fort\"\r\n")
                 return
             }
             openUpstream(req, leftover: leftover)

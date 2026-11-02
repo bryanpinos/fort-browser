@@ -86,7 +86,7 @@ struct BrowserView: UIViewRepresentable {
         case .socks5: configuration = ProxyConfiguration(socksv5Proxy: endpoint)
         case .http:   configuration = ProxyConfiguration(httpCONNECTProxy: endpoint)
         case .relay:
-            let headers = proxy.authToken.map { ["x-hearth-token": $0] } ?? [:]
+            let headers = proxy.authToken.map { ["x-fort-token": $0] } ?? [:]
             let tls = NWProtocolTLS.Options()
             if let identity = proxy.clientIdentity.flatMap(secIdentity(from:)),
                let secIdentity = sec_identity_create(identity) {

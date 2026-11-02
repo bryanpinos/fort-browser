@@ -1,4 +1,4 @@
-# Hearth relay stack. Deployed at /volume1/docker/hearth-relay on the NAS.
+# Fort relay stack. Deployed at /volume1/docker/fort-relay on the NAS.
 #   relay-cert  lego: issues/renews relay.example.com via Route 53 DNS-01
 #   relay       Envoy (distroless, non-root): the relay itself on :8443
 # .env holds LEGO_EMAIL, AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION /
@@ -6,7 +6,7 @@
 services:
   relay-cert:
     image: goacme/lego:latest
-    container_name: hearth-relay-cert
+    container_name: fort-relay-cert
     restart: unless-stopped
     env_file: .env
     entrypoint: ["/bin/sh", "/renew.sh"]
@@ -20,7 +20,7 @@ services:
 
   relay:
     image: envoyproxy/envoy:distroless-v1.40-latest
-    container_name: hearth-relay
+    container_name: fort-relay
     restart: unless-stopped
     command: ["-c", "/etc/envoy/envoy.yaml", "--disable-hot-restart", "--log-level", "warn"]
     ports:
