@@ -10,6 +10,10 @@ import Observation
 /// it. So WebKit is pointed at this proxy on 127.0.0.1, and each CONNECT is
 /// re-opened through the relay from here.
 ///
+/// Reported to Apple as FB25401454 (filed 2026-11-02; repro in
+/// feedback/relay-client-cert). If a future iOS fixes it, WebKit can use the
+/// relay hop directly and this forwarder can go.
+///
 /// Fail-closed: until this is listening, WebKit's proxy is a dead loopback
 /// port; if the relay is unreachable, the CONNECT gets a 502. No direct path.
 @Observable

@@ -1,4 +1,6 @@
-# Feedback draft: WKWebView ignores the client identity on a relay hop
+# FB25401454: WKWebView ignores the client identity on a relay hop
+
+**Filed 2026-11-02** (WebKit API, iOS 27.2 simulator).
 
 File in **Feedback Assistant** → *iOS & iPadOS* → *Safari and Web Technologies* (WebKit).
 Attach this folder zipped (without `server/certs/` and `build/`) and the
