@@ -38,6 +38,22 @@ services:
     pids_limit: 256
     depends_on: [relay-cert]
 
+  # Dynamic DNS: keeps relay.example.com -> this home's public IPv4 (Route 53,
+  # that record only, only on change). Same AWS credentials as lego (.env).
+  ddns:
+    image: amazon/aws-cli:latest
+    container_name: fort-relay-ddns
+    restart: unless-stopped
+    env_file: .env
+    entrypoint: ["/bin/bash", "/ddns.sh"]
+    volumes:
+      - ./ddns.sh:/ddns.sh:ro
+    read_only: true
+    tmpfs: [/tmp, /root/.aws]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+
   # Envoy stats + cert expiry -> Home Assistant (MQTT discovery). Shares the
   # relay's network namespace to reach its loopback-only admin API.
   monitor:
