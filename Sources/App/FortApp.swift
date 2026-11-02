@@ -6,13 +6,15 @@ struct FortApp: App {
     @State private var gate: NetworkGate
     @State private var logger: ActivityLogger
     @State private var forwarder = RelayForwarder()
-    @State private var identities = ClientIdentityStore()
+    @State private var identities: ClientIdentityStore
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let store = ConfigStore()
         _store = State(initialValue: store)
-        _gate = State(initialValue: NetworkGate(config: store.config))
+        let identities = ClientIdentityStore()
+        _identities = State(initialValue: identities)
+        _gate = State(initialValue: NetworkGate(config: store.config, identities: identities))
         let logger = ActivityLogger(endpoint: store.config.logEndpoint)
         logger.deviceName = store.deviceName
         _logger = State(initialValue: logger)

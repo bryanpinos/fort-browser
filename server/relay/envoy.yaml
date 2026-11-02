@@ -12,6 +12,7 @@
 #   2. private / internal targets   -> 403 (a leaked token must not reach the LAN)
 #   3. ports 80/443                 -> tunneled via the dynamic forward proxy
 #   4. any other CONNECT            -> 403
+#   5. GET /fort/health + token     -> 200 (app's gate check); else 404
 # The authority deny-list can't see what a public name resolves to, so a name
 # pointing at a private IP gets through. Before exposing this to the internet,
 # also isolate the relay's egress at the network layer (own VLAN + firewall).
@@ -112,6 +113,14 @@ static_resources:
                   upgrade_configs: [{upgrade_type: CONNECT, connect_config: {}}]
               - match: {connect_matcher: {}}
                 direct_response: {status: 403}
+              # Fort's "connected to home" check. Reaching this at all needs a
+              # valid client cert (TLS handshake); the token is checked here.
+              - match:
+                  path: "/fort/health"
+                  headers:
+                  - name: x-fort-token
+                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                direct_response: {status: 200, body: {inline_string: "ok"}}
               - match: {prefix: "/"}
                 direct_response: {status: 404}
           http_filters:

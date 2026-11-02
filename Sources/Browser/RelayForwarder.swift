@@ -266,7 +266,12 @@ private final class Tunnel {
                     pump(from: client, to: up)
                     pump(from: up, to: client)
                 })
-            case .waiting, .failed:
+            case .waiting:
+                if up.currentPath?.unsatisfiedReason == .localNetworkDenied {
+                    forwarderTrace("upstream blocked: Local Network permission denied")
+                }
+                if !established { respond("502 Bad Gateway") } else { close() }
+            case .failed:
                 // .waiting means the relay is unreachable or refused us. Never
                 // wait for a better path: fail this CONNECT now.
                 if !established { respond("502 Bad Gateway") } else { close() }

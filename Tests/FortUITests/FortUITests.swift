@@ -98,6 +98,16 @@ final class FortUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Open Tailscale"].exists)
     }
 
+    func testUnreachableRelayShowsHomeOverlayWithoutVPNAdvice() {
+        let app = launch(["proxy": ["kind": "relay", "host": "10.255.255.1", "port": 8443, "authToken": "t"]])
+        XCTAssertTrue(app.staticTexts["Fort works from home"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Check again"].exists)
+        XCTAssertFalse(app.buttons["Open Tailscale"].exists, "relay mode shouldn't suggest a VPN")
+        app.buttons["gate-parent-settings"].tap()
+        XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5),
+                      "settings must stay reachable while the gate is closed")
+    }
+
     func testNoPINOpensSettingsDirectly() {
         let app = launch([:])
         app.buttons["Parent settings"].tap()
@@ -158,7 +168,10 @@ final class FortUITests: XCTestCase {
 
     func testRelaySettingsShowTokenAndCertificateSection() {
         let app = launch(["proxy": ["kind": "relay", "host": "relay.example.com", "port": 8443]])
-        app.buttons["Parent settings"].tap()
+        // The relay is unreachable, so the gate is closed: use the overlay's button.
+        let grownUps = app.buttons["gate-parent-settings"]
+        XCTAssertTrue(grownUps.waitForExistence(timeout: 20))
+        grownUps.tap()
         XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5))
         let token = app.secureTextFields["Relay token"]
         scrollTo(token, in: app)

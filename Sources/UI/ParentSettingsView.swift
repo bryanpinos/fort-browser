@@ -33,6 +33,13 @@ struct ParentSettingsView: View {
     @State private var importError: String?
     @State private var showLog = false
 
+    /// Set when a .p12 was opened in Fort from another app; consumed on appear.
+    @Binding var incomingCertificate: Data?
+
+    init(incomingCertificate: Binding<Data?> = .constant(nil)) {
+        _incomingCertificate = incomingCertificate
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -156,7 +163,14 @@ struct ParentSettingsView: View {
             } message: {
                 Text("Enter the password you chose when the certificate was made.")
             }
-            .onAppear(perform: loadDraft)
+            .onAppear {
+                loadDraft()
+                if let data = incomingCertificate {
+                    incomingCertificate = nil
+                    certPassword = ""
+                    pendingCertData = data
+                }
+            }
         }
     }
 
@@ -200,7 +214,8 @@ struct ParentSettingsView: View {
         case .open: return "Gate disabled"
         case .checking: return "Checking…"
         case .connected: return "Connected to home"
-        case .disconnected: return "Not connected"
+        case .disconnected(let reason): return "Not connected: \(reason)"
+        case .needsLocalNetwork: return "Blocked: allow Local Network for Fort in Settings"
         }
     }
 

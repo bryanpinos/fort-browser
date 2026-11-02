@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Fort app icon: a quilted blanket fort at twilight, door glowing warm.
+       Palette avoids red/green pairs: indigo/violet sky, sky-blue + amber + cream quilt. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E3A8C"/>
+      <stop offset="1" stop-color="#6A4FC2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="760" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD88A" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFD88A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="door" cx="512" cy="820" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF4C7"/>
+      <stop offset="0.6" stop-color="#FFC94D"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </radialGradient>
+    <!-- Quilt: alternating sky-blue / cream squares with amber stitching -->
+    <pattern id="quilt" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse" patternTransform="rotate(0)">
+      <rect width="120" height="120" fill="#7CC4FF"/>
+      <rect width="60" height="60" fill="#FFF3DC"/>
+      <rect x="60" y="60" width="60" height="60" fill="#FFF3DC"/>
+      <path d="M0 60H120M60 0V120" stroke="#F59E0B" stroke-width="5" stroke-dasharray="10 8"/>
+    </pattern>
+    <clipPath id="tentClip">
+      <path d="M512 250 L800 860 Q512 830 224 860 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+
+  <!-- stars -->
+  <g fill="#FFF3DC">
+    <circle cx="170" cy="190" r="9"/><circle cx="300" cy="120" r="6"/>
+    <circle cx="820" cy="170" r="10"/><circle cx="900" cy="300" r="6"/>
+    <circle cx="120" cy="380" r="6"/><circle cx="700" cy="110" r="5"/>
+  </g>
+  <path d="M845 330 l10 22 22 10 -22 10 -10 22 -10-22 -22-10 22-10z" fill="#FFD88A"/>
+
+  <!-- warm light spilling onto the floor -->
+  <ellipse cx="512" cy="880" rx="420" ry="110" fill="#241E5C" opacity="0.55"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+
+  <!-- pennant on a little pole -->
+  <path d="M512 150 V262" stroke="#FFF3DC" stroke-width="12" stroke-linecap="round"/>
+  <path d="M518 156 L630 186 L518 218 Z" fill="#F59E0B"/>
+
+  <!-- the blanket: quilted A-frame with a soft sag along the bottom -->
+  <g clip-path="url(#tentClip)">
+    <rect x="200" y="240" width="624" height="640" fill="url(#quilt)"/>
+    <!-- shading on the right half for depth -->
+    <path d="M512 250 L800 860 Q656 845 512 838 Z" fill="#1E2A6E" opacity="0.18"/>
+  </g>
+  <path d="M512 250 L800 860 Q512 830 224 860 Z" fill="none" stroke="#FFF3DC" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- glowing doorway -->
+  <path d="M512 560 C440 560 408 640 404 842 Q512 834 620 842 C616 640 584 560 512 560 Z" fill="url(#door)"/>
+  <path d="M512 560 C440 560 408 640 404 842" fill="none" stroke="#FFF3DC" stroke-width="10" stroke-linecap="round"/>
+  <path d="M512 560 C584 560 616 640 620 842" fill="none" stroke="#FFF3DC" stroke-width="10" stroke-linecap="round"/>
+</svg>

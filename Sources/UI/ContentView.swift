@@ -10,6 +10,9 @@ struct ContentView: View {
     @State private var model = BrowserModel()
     @State private var showPIN = false
     @State private var showSettings = false
+    /// A .p12 opened in Fort (AirDrop / Files "Open in"), waiting for the
+    /// parent to unlock settings and enter its password.
+    @State private var incomingCertificate: Data?
     @FocusState private var urlFocused: Bool
 
     var body: some View {
@@ -30,7 +33,7 @@ struct ContentView: View {
             .blur(radius: gate.isAllowed ? 0 : 6)
 
             if !gate.isAllowed {
-                GateOverlay()
+                GateOverlay(openParentSettings: openParentSettings)
             }
         }
         .sheet(isPresented: $showPIN) {
@@ -40,7 +43,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            ParentSettingsView()
+            ParentSettingsView(incomingCertificate: $incomingCertificate)
         }
         .onChange(of: store.config) { _, newValue in
             gate.apply(config: newValue)
@@ -49,7 +52,9 @@ struct ContentView: View {
         }
         .onChange(of: identities.info) { _, _ in
             forwarder.apply(store.config, identities: identities)
+            gate.apply(config: store.config)
         }
+        .onOpenURL { url in receiveCertificate(at: url) }
         .onChange(of: store.deviceName) { _, newValue in
             logger.deviceName = newValue
         }
@@ -78,14 +83,31 @@ struct ContentView: View {
                 Image(systemName: model.isLoading ? "xmark" : "arrow.clockwise")
             }
 
-            Button {
-                if store.config.parentPINHash == nil { showSettings = true } else { showPIN = true }
-            } label: { Image(systemName: "gearshape") }
+            Button(action: openParentSettings) { Image(systemName: "gearshape") }
                 .accessibilityLabel("Parent settings")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    /// Reads a certificate handed to Fort by another app, deletes the copy iOS
+    /// placed in our Inbox (so no key bundle lingers on disk), and routes it
+    /// through the parent PIN to Parent settings.
+    /// Settings stay reachable even while the gate is closed (e.g. to fix
+    /// the relay address); the PIN still protects them.
+    private func openParentSettings() {
+        if store.config.parentPINHash == nil { showSettings = true } else { showPIN = true }
+    }
+
+    private func receiveCertificate(at url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        let data = try? Data(contentsOf: url)
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
+        guard let data, !data.isEmpty else { return }
+        incomingCertificate = data
+        openParentSettings()
     }
 
     private func blockedBanner(_ message: String) -> some View {
@@ -108,6 +130,7 @@ struct ContentView: View {
 struct GateOverlay: View {
     @Environment(NetworkGate.self) private var gate
     @Environment(\.openURL) private var openURL
+    let openParentSettings: () -> Void
 
     var body: some View {
         VStack(spacing: 20) {
@@ -120,12 +143,21 @@ struct GateOverlay: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 40)
 
-            Button {
-                if let url = URL(string: "tailscale://") { openURL(url) }
-            } label: {
-                Label("Open Tailscale", systemImage: "network")
+            if gate.state == .needsLocalNetwork {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                } label: {
+                    Label("Open Settings", systemImage: "gear")
+                }
+                .buttonStyle(.borderedProminent)
+            } else if !gate.usesRelay {
+                Button {
+                    if let url = URL(string: "tailscale://") { openURL(url) }
+                } label: {
+                    Label("Open Tailscale", systemImage: "network")
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
 
             Button("Check again") { gate.checkNow() }
                 .buttonStyle(.bordered)
@@ -137,13 +169,24 @@ struct GateOverlay: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            Button(action: openParentSettings) {
+                Label("Grown-ups", systemImage: "gearshape")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("gate-parent-settings")
+            .padding()
+        }
         .background(.regularMaterial)
     }
 
     private var message: String {
         switch gate.state {
         case .checking: return "Checking the connection to home…"
-        case .disconnected(let reason): return reason + ". Turn on the VPN and try again."
+        case .needsLocalNetwork:
+            return "Fort needs permission to reach home. Ask a grown-up to turn on Local Network for Fort in Settings."
+        case .disconnected(let reason):
+            return gate.usesRelay ? reason + ". Fort only works at home for now." : reason + ". Turn on the VPN and try again."
         default: return ""
         }
     }
