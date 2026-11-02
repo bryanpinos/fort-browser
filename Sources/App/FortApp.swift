@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct HearthApp: App {
+struct FortApp: App {
     @State private var store: ConfigStore
     @State private var gate: NetworkGate
     @State private var logger: ActivityLogger

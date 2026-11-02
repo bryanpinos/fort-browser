@@ -1,6 +1,6 @@
-# XcodeGen spec. Run `xcodegen generate` to produce Hearth.xcodeproj.
+# XcodeGen spec. Run `xcodegen generate` to produce Fort.xcodeproj.
 # https://github.com/yonaskolb/XcodeGen
-name: Hearth
+name: Fort
 options:
   bundleIdPrefix: dev.pinos          # change to your reverse-DNS prefix
   deploymentTarget:
@@ -18,23 +18,26 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
 targets:
-  Hearth:
+  Fort:
     type: application
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.pinos.fort
     platform: iOS
     sources:
       - Sources
       - path: Resources
         optional: true
     entitlements:
-      path: Hearth.entitlements
+      path: Fort.entitlements
     scheme:
       testTargets:
         - GateConfigTests
-        - HearthUITests
+        - FortUITests
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Hearth
+        CFBundleDisplayName: Fort
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         UILaunchScreen: {}
@@ -48,7 +51,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIRequiresFullScreen: false
-        NSLocalNetworkUsageDescription: Hearth checks that this device can reach your home network before allowing browsing.
+        NSLocalNetworkUsageDescription: Fort checks that this device can reach your home network before allowing browsing.
         LSApplicationQueriesSchemes:
           - tailscale
         # Lets the app be offered as a handler for links (needed later for the
@@ -67,18 +70,18 @@ targets:
     sources:
       - Tests/GateConfigTests
     dependencies:
-      - target: Hearth
+      - target: Fort
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
 
-  HearthUITests:
+  FortUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - Tests/HearthUITests
+      - Tests/FortUITests
     dependencies:
-      - target: Hearth
+      - target: Fort
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

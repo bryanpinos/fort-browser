@@ -1,15 +1,15 @@
-"""Tiny activity-log collector for Hearth.
+"""Tiny activity-log collector for Fort.
 
 POST /log  {"device": "...", "entries": [{"timestamp": ..., "url": ..., "allowed": ..., "reason": ...}]}
 GET  /     last 200 lines as text (quick look from a browser on the tailnet)
 
-Appends JSON lines to /data/hearth.jsonl. Swap for Loki/Elastic/HA later.
+Appends JSON lines to /data/fort.jsonl. Swap for Loki/Elastic/HA later.
 """
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-LOG = Path("/data/hearth.jsonl")
+LOG = Path("/data/fort.jsonl")
 LOG.parent.mkdir(parents=True, exist_ok=True)
 
 

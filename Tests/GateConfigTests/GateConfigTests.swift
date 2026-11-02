@@ -1,5 +1,5 @@
 import XCTest
-@testable import Hearth
+@testable import Fort
 
 final class AllowsHostTests: XCTestCase {
 

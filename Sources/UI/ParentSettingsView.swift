@@ -90,7 +90,7 @@ struct ParentSettingsView: View {
                 }
 
                 Section("Import / export") {
-                    TextField("Config URL (e.g. http://nas.tailnet/hearth.json)", text: $importURLText)
+                    TextField("Config URL (e.g. http://nas.tailnet/fort.json)", text: $importURLText)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Fetch config from URL") { fetchConfig() }
                         .disabled(importURLText.isEmpty)
