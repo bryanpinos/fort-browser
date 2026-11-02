@@ -102,6 +102,21 @@ final class RelayForwarderLoopbackTests: XCTestCase {
         XCTAssertEqual(line, "HTTP/1.1 502 Bad Gateway")
     }
 
+    func testStalledRelayGets504InsteadOfHanging() async throws {
+        // 10.255.255.1 doesn't answer, so the upstream sits in .preparing
+        // (like a pending Local Network prompt). The forwarder must give up.
+        await MainActor.run {
+            forwarder.start(relay: ProxyConfiguration(relayHops: [
+                .init(http2RelayEndpoint: .hostPort(host: "10.255.255.1", port: 8443)),
+            ]))
+        }
+        for _ in 0..<50 where forwarder.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+        let started = Date()
+        let line = try await statusLine(for: "CONNECT example.com:443 HTTP/1.1\r\nProxy-Authorization: \(auth)\r\n\r\n")
+        XCTAssertTrue(line == "HTTP/1.1 504 Gateway Timeout" || line == "HTTP/1.1 502 Bad Gateway", line)
+        XCTAssertLessThan(Date().timeIntervalSince(started), RelayForwarder.upstreamTimeout + 3)
+    }
+
     func testStopClosesThePort() async throws {
         await MainActor.run { forwarder.stop() }
         XCTAssertNil(forwarder.port)
@@ -119,11 +134,13 @@ final class RelayForwarderMTLSIntegrationTests: XCTestCase {
         guard let p12 = env["FORT_P12"] else { throw XCTSkip("no spike env") }
         var cfg = GateConfig()
         cfg.proxy = .init(kind: .relay, host: env["FORT_RELAY_HOST"] ?? "localhost",
-                          port: UInt16(env["FORT_RELAY_PORT"] ?? "") ?? 8443, authToken: env["FORT_TOKEN"],
-                          clientIdentity: .init(pkcs12Base64: p12, password: env["FORT_P12_PASSWORD"] ?? "spike"))
+                          port: UInt16(env["FORT_RELAY_PORT"] ?? "") ?? 8443, authToken: env["FORT_TOKEN"])
+        let identities = ClientIdentityStore(service: "dev.pinos.fort.tests.\(UUID().uuidString)")
+        try identities.importPKCS12(try XCTUnwrap(Data(base64Encoded: p12)),
+                                    password: env["FORT_P12_PASSWORD"] ?? "spike")
         let forwarder = RelayForwarder()
-        await MainActor.run { forwarder.apply(cfg) }
-        defer { forwarder.stop() }
+        await MainActor.run { forwarder.apply(cfg, identities: identities) }
+        defer { forwarder.stop(); identities.remove() }
         for _ in 0..<50 where forwarder.port == nil { try await Task.sleep(for: .milliseconds(100)) }
         let port = try XCTUnwrap(forwarder.port.flatMap(NWEndpoint.Port.init(rawValue:)))
 

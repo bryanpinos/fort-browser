@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(NetworkGate.self) private var gate
     @Environment(ActivityLogger.self) private var logger
     @Environment(RelayForwarder.self) private var forwarder
+    @Environment(ClientIdentityStore.self) private var identities
 
     @State private var model = BrowserModel()
     @State private var showPIN = false
@@ -19,7 +20,7 @@ struct ContentView: View {
                     ProgressView(value: model.progress).progressViewStyle(.linear)
                 }
                 ZStack {
-                    BrowserView(model: model, config: store.config, logger: logger, forwarder: forwarder)
+                    BrowserView(model: model, config: store.config, logger: logger, forwarder: forwarder, identities: identities)
                     if let message = model.blockedMessage {
                         blockedBanner(message)
                     }
@@ -44,7 +45,10 @@ struct ContentView: View {
         .onChange(of: store.config) { _, newValue in
             gate.apply(config: newValue)
             logger.apply(endpoint: newValue.logEndpoint)
-            forwarder.apply(newValue)
+            forwarder.apply(newValue, identities: identities)
+        }
+        .onChange(of: identities.info) { _, _ in
+            forwarder.apply(store.config, identities: identities)
         }
         .onChange(of: store.deviceName) { _, newValue in
             logger.deviceName = newValue

@@ -44,6 +44,10 @@ final class RelayForwarder {
     static let maxTunnels = 128
     static let maxHeaderBytes = 8192
     static let headerTimeout: TimeInterval = 10
+    /// How long a CONNECT may wait for the relay before we answer 504, so
+    /// WebKit shows an error instead of a page that never loads (e.g. while
+    /// iOS holds the connection for the Local Network permission).
+    static let upstreamTimeout: TimeInterval = 8
     static let allowedPorts: Set<UInt16> = [80, 443]
 
     var isRunning: Bool { relay != nil }
@@ -61,8 +65,9 @@ final class RelayForwarder {
     func stop() {
         relay = nil
         context = nil
-        listener?.cancel()
+        let old = listener
         listener = nil
+        old?.cancel()
         setPort(nil)
     }
 
@@ -77,7 +82,9 @@ final class RelayForwarder {
     }
 
     private func listen() {
-        listener?.cancel()
+        let old = listener
+        listener = nil
+        old?.cancel()
         let params = NWParameters.tcp
         params.requiredInterfaceType = .loopback
         params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
@@ -85,6 +92,9 @@ final class RelayForwarder {
         listener = l
         l.stateUpdateHandler = { [weak self, weak l] state in
             guard let self, let l else { return }
+            // A replaced listener's late callbacks (e.g. .cancelled after a
+            // restart) must not touch the port the new listener published.
+            guard self.listener === l else { return }
             switch state {
             case .ready:
                 forwarderTrace("listening on \(l.port?.rawValue ?? 0)")
@@ -187,7 +197,7 @@ private final class Tunnel {
         }
         client.start(queue: queue)
         queue.asyncAfter(deadline: .now() + RelayForwarder.headerTimeout) { [self] in
-            if !established { close() }
+            if !established && upstream == nil { close() }
         }
         readHead()
     }
@@ -236,6 +246,12 @@ private final class Tunnel {
         guard let port = NWEndpoint.Port(rawValue: req.port) else { respond("400 Bad Request"); return }
         let up = NWConnection(host: NWEndpoint.Host(req.host), port: port, using: params)
         upstream = up
+        queue.asyncAfter(deadline: .now() + RelayForwarder.upstreamTimeout) { [self] in
+            if !established && !closed {
+                forwarderTrace("upstream \(req.host):\(req.port) timed out")
+                respond("504 Gateway Timeout")
+            }
+        }
         up.stateUpdateHandler = { [self] state in
             forwarderTrace("upstream \(req.host):\(req.port) -> \(state)")
             switch state {
@@ -294,18 +310,17 @@ private final class Tunnel {
 }
 
 extension RelayForwarder {
-    /// Runs the forwarder only when the config needs it (an mTLS relay).
-    func apply(_ config: GateConfig) {
-        guard let proxy = config.proxy, BrowserView.usesForwarder(proxy) else {
+    /// Runs the forwarder only when it's needed: a relay plus a client cert.
+    func apply(_ config: GateConfig, identities: ClientIdentityStore) {
+        guard let proxy = config.proxy, BrowserView.usesForwarder(proxy, hasIdentity: identities.hasIdentity) else {
             forwarderTrace("not needed for this config"); stop(); return
         }
-        let upstream = BrowserView.proxyConfiguration(for: proxy)
-        // Without a loadable identity the relay would refuse us anyway; don't
-        // listen, so WebKit stays on the dead port (fail closed).
-        guard proxy.clientIdentity.flatMap(BrowserView.secIdentity(from:)) != nil else {
+        // If the keychain item can't be turned into an identity after all,
+        // don't listen: WebKit stays on the dead port (fail closed).
+        guard let identity = identities.identity() else {
             forwarderTrace("client identity did NOT load; staying closed"); stop(); return
         }
         forwarderTrace("client identity loaded; starting")
-        start(relay: upstream)
+        start(relay: BrowserView.proxyConfiguration(for: proxy, identity: identity))
     }
 }

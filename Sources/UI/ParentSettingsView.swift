@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// PIN-protected configuration screen. Everything here round-trips through
 /// `GateConfig` JSON so a parent can also just paste a config exported from
@@ -7,6 +8,7 @@ struct ParentSettingsView: View {
     @Environment(ConfigStore.self) private var store
     @Environment(NetworkGate.self) private var gate
     @Environment(ActivityLogger.self) private var logger
+    @Environment(ClientIdentityStore.self) private var identities
     @Environment(\.dismiss) private var dismiss
 
     @State private var draft: GateConfig = .default
@@ -15,6 +17,11 @@ struct ParentSettingsView: View {
     @State private var proxyKind: GateConfig.ProxyConfig.Kind = .socks5
     @State private var proxyHost = ""
     @State private var proxyPort = "1080"
+    @State private var proxyToken = ""
+    @State private var showCertImporter = false
+    @State private var pendingCertData: Data?
+    @State private var certPassword = ""
+    @State private var certMessage: String?
     @State private var allowText = ""
     @State private var denyText = ""
     @State private var homeText = ""
@@ -47,13 +54,26 @@ struct ParentSettingsView: View {
                     Toggle("Pin all traffic through a proxy", isOn: $proxyEnabled)
                     if proxyEnabled {
                         Picker("Type", selection: $proxyKind) {
+                            Text("Relay (recommended)").tag(GateConfig.ProxyConfig.Kind.relay)
                             Text("SOCKS5").tag(GateConfig.ProxyConfig.Kind.socks5)
                             Text("HTTP CONNECT").tag(GateConfig.ProxyConfig.Kind.http)
                         }
-                        TextField("Host (e.g. 100.101.102.103)", text: $proxyHost)
+                        TextField(proxyKind == .relay ? "Host (e.g. relay.example.com)" : "Host (e.g. 100.101.102.103)",
+                                  text: $proxyHost)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                         TextField("Port", text: $proxyPort).keyboardType(.numberPad)
+                        if proxyKind == .relay {
+                            SecureField("Relay token", text: $proxyToken)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        }
                     }
+                }
+                .onChange(of: proxyKind) { _, kind in
+                    if kind == .relay && proxyPort == "1080" { proxyPort = "8443" }
+                }
+
+                if proxyEnabled && proxyKind == .relay {
+                    relayCertificateSection
                 }
 
                 Section {
@@ -111,8 +131,68 @@ struct ParentSettingsView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Save") { save() } }
             }
             .sheet(isPresented: $showLog) { ActivityLogView() }
+            .fileImporter(isPresented: $showCertImporter, allowedContentTypes: [.pkcs12]) { result in
+                certMessage = nil
+                switch result {
+                case .success(let url):
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                    if let data = try? Data(contentsOf: url) {
+                        certPassword = ""
+                        pendingCertData = data
+                    } else {
+                        certMessage = "Couldn't read that file."
+                    }
+                case .failure(let error):
+                    certMessage = error.localizedDescription
+                }
+            }
+            .alert("Certificate password", isPresented: Binding(
+                get: { pendingCertData != nil },
+                set: { if !$0 { pendingCertData = nil } })) {
+                SecureField("Password", text: $certPassword)
+                Button("Import") { importPendingCertificate() }
+                Button("Cancel", role: .cancel) { pendingCertData = nil }
+            } message: {
+                Text("Enter the password you chose when the certificate was made.")
+            }
             .onAppear(perform: loadDraft)
         }
+    }
+
+    private var relayCertificateSection: some View {
+        Section {
+            if let info = identities.info {
+                LabeledContent("Certificate", value: info.name)
+                if let id = info.deviceID { LabeledContent("Device ID", value: id) }
+                LabeledContent("Expires", value: info.expires.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Unknown")
+                Button("Replace certificate…") { showCertImporter = true }
+                Button("Remove certificate", role: .destructive) {
+                    identities.remove()
+                    certMessage = "Certificate removed."
+                }
+            } else {
+                Text("No certificate installed").foregroundStyle(.secondary)
+                Button("Import certificate…") { showCertImporter = true }
+            }
+            if let certMessage {
+                Text(certMessage).font(.footnote).foregroundStyle(.secondary)
+            }
+        } header: { Text("Relay certificate") } footer: {
+            Text("A .p12 file made for this iPad. It's kept in this iPad's keychain only: never backed up, synced or included in exported settings. Takes effect immediately.")
+        }
+    }
+
+    private func importPendingCertificate() {
+        guard let data = pendingCertData else { return }
+        pendingCertData = nil
+        do {
+            let info = try identities.importPKCS12(data, password: certPassword)
+            certMessage = "Imported \(info.deviceID ?? info.name)."
+        } catch {
+            certMessage = error.localizedDescription
+        }
+        certPassword = ""
     }
 
     private var statusText: String {
@@ -131,6 +211,8 @@ struct ParentSettingsView: View {
         proxyKind = draft.proxy?.kind ?? .socks5
         proxyHost = draft.proxy?.host ?? ""
         proxyPort = draft.proxy.map { String($0.port) } ?? "1080"
+        proxyToken = draft.proxy?.authToken ?? ""
+        certMessage = nil
         allowText = draft.allowlist.joined(separator: "\n")
         denyText = draft.denylist.joined(separator: "\n")
         homeText = draft.homeURL.absoluteString
@@ -145,7 +227,8 @@ struct ParentSettingsView: View {
         cfg.probeURL = URL(string: probeText.trimmingCharacters(in: .whitespaces)).flatMap { $0.host == nil ? nil : $0 }
         cfg.proxy = proxyEnabled && !proxyHost.isEmpty
             ? GateConfig.ProxyConfig(kind: proxyKind, host: proxyHost.trimmingCharacters(in: .whitespaces),
-                                     port: UInt16(proxyPort) ?? 1080)
+                                     port: UInt16(proxyPort) ?? (proxyKind == .relay ? 8443 : 1080),
+                                     authToken: proxyKind == .relay && !proxyToken.isEmpty ? proxyToken : nil)
             : nil
         cfg.allowlist = lines(allowText)
         cfg.denylist = lines(denyText)

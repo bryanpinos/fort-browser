@@ -15,6 +15,7 @@ struct BrowserView: UIViewRepresentable {
     let config: GateConfig
     let logger: ActivityLogger
     let forwarder: RelayForwarder
+    let identities: ClientIdentityStore
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model, config: config, logger: logger)
@@ -28,6 +29,7 @@ struct BrowserView: UIViewRepresentable {
         let store = WKWebsiteDataStore.default()
         store.proxyConfigurations = webKitProxies()
         context.coordinator.appliedForwarderPort = forwarder.port
+        context.coordinator.appliedHasIdentity = identities.hasIdentity
         configuration.websiteDataStore = store
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -47,9 +49,11 @@ struct BrowserView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         let coordinator = context.coordinator
         let configChanged = coordinator.config != config
-        if configChanged || coordinator.appliedForwarderPort != forwarder.port {
+        if configChanged || coordinator.appliedForwarderPort != forwarder.port
+            || coordinator.appliedHasIdentity != identities.hasIdentity {
             coordinator.config = config
             coordinator.appliedForwarderPort = forwarder.port
+            coordinator.appliedHasIdentity = identities.hasIdentity
             webView.configuration.websiteDataStore.proxyConfigurations = webKitProxies()
         }
         if configChanged {
@@ -60,7 +64,9 @@ struct BrowserView: UIViewRepresentable {
     /// What WebKit itself should use as its proxy.
     private func webKitProxies() -> [ProxyConfiguration] {
         guard let proxy = config.proxy else { return [] }
-        guard Self.usesForwarder(proxy) else { return [Self.proxyConfiguration(for: proxy)] }
+        guard Self.usesForwarder(proxy, hasIdentity: identities.hasIdentity) else {
+            return [Self.proxyConfiguration(for: proxy, identity: nil)]
+        }
         // WebKit can't present client certs to a relay, so it goes through the
         // in-app forwarder. Until that's listening, point at a closed loopback
         // port (9, discard) so nothing loads.
@@ -71,14 +77,16 @@ struct BrowserView: UIViewRepresentable {
         return [local]
     }
 
-    /// A relay with a client certificate needs the in-app forwarder.
-    static func usesForwarder(_ proxy: GateConfig.ProxyConfig) -> Bool {
-        proxy.kind == .relay && proxy.clientIdentity != nil
+    /// A relay plus an installed client certificate needs the in-app forwarder.
+    /// Without a certificate WebKit uses the relay hop directly (token only);
+    /// a relay that requires mTLS then refuses it, which fails closed.
+    static func usesForwarder(_ proxy: GateConfig.ProxyConfig, hasIdentity: Bool) -> Bool {
+        proxy.kind == .relay && hasIdentity
     }
 
     /// The proxy as the parent configured it. For an mTLS relay this is what
     /// the forwarder dials; WebKit never sees it.
-    static func proxyConfiguration(for proxy: GateConfig.ProxyConfig) -> ProxyConfiguration {
+    static func proxyConfiguration(for proxy: GateConfig.ProxyConfig, identity: SecIdentity?) -> ProxyConfiguration {
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(proxy.host),
                                            port: NWEndpoint.Port(rawValue: proxy.port) ?? 8080)
         var configuration: ProxyConfiguration
@@ -88,8 +96,7 @@ struct BrowserView: UIViewRepresentable {
         case .relay:
             let headers = proxy.authToken.map { ["x-fort-token": $0] } ?? [:]
             let tls = NWProtocolTLS.Options()
-            if let identity = proxy.clientIdentity.flatMap(secIdentity(from:)),
-               let secIdentity = sec_identity_create(identity) {
+            if let identity, let secIdentity = sec_identity_create(identity) {
                 sec_protocol_options_set_local_identity(tls.securityProtocolOptions, secIdentity)
             }
             configuration = ProxyConfiguration(relayHops: [
@@ -101,22 +108,13 @@ struct BrowserView: UIViewRepresentable {
         return configuration
     }
 
-    static func secIdentity(from id: GateConfig.ProxyConfig.ClientIdentity) -> SecIdentity? {
-        guard let data = Data(base64Encoded: id.pkcs12Base64) else { return nil }
-        var items: CFArray?
-        let options = [kSecImportExportPassphrase as String: id.password] as CFDictionary
-        guard SecPKCS12Import(data as CFData, options, &items) == errSecSuccess,
-              let first = (items as? [[String: Any]])?.first,
-              let identity = first[kSecImportItemIdentity as String] else { return nil }
-        return (identity as! SecIdentity)
-    }
-
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let model: BrowserModel
         var config: GateConfig
         var appliedForwarderPort: UInt16?
+        var appliedHasIdentity = false
         let logger: ActivityLogger
         private var observations: [NSKeyValueObservation] = []
 
@@ -212,7 +210,9 @@ struct BrowserView: UIViewRepresentable {
             model.isLoading = false
             let nsError = error as NSError
             if nsError.code != NSURLErrorCancelled {
-                model.blockedMessage = "Couldn't load that page."
+                model.blockedMessage = config.proxy?.kind == .relay
+                    ? "Couldn't reach home. Check Wi-Fi, and that Local Network is allowed for Fort in Settings."
+                    : "Couldn't load that page."
             }
         }
 

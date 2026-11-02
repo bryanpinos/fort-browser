@@ -6,6 +6,7 @@ struct FortApp: App {
     @State private var gate: NetworkGate
     @State private var logger: ActivityLogger
     @State private var forwarder = RelayForwarder()
+    @State private var identities = ClientIdentityStore()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -24,8 +25,9 @@ struct FortApp: App {
                 .environment(gate)
                 .environment(logger)
                 .environment(forwarder)
+                .environment(identities)
                 .onAppear {
-                    forwarder.apply(store.config)
+                    forwarder.apply(store.config, identities: identities)
                     gate.start()
                 }
                 .onChange(of: scenePhase) { _, phase in

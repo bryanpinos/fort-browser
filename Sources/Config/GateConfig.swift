@@ -45,16 +45,9 @@ struct GateConfig: Codable, Equatable {
         var host: String
         var port: UInt16
         /// Sent as `x-fort-token` on every relay request. Relay only.
+        /// The relay's client certificate is NOT part of the config: it's
+        /// imported once per device into the keychain (ClientIdentityStore).
         var authToken: String? = nil
-        /// Client certificate for mutual TLS with the relay. Relay only.
-        /// TODO: import into the keychain once instead, so it never travels
-        /// with exported configs.
-        var clientIdentity: ClientIdentity? = nil
-
-        struct ClientIdentity: Codable, Equatable {
-            var pkcs12Base64: String
-            var password: String
-        }
     }
 
     static let `default` = GateConfig()

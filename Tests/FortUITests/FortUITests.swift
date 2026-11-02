@@ -156,6 +156,19 @@ final class FortUITests: XCTestCase {
         XCTAssertEqual(reopened.value as? String, "Ava's iPad")
     }
 
+    func testRelaySettingsShowTokenAndCertificateSection() {
+        let app = launch(["proxy": ["kind": "relay", "host": "relay.example.com", "port": 8443]])
+        app.buttons["Parent settings"].tap()
+        XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5))
+        let token = app.secureTextFields["Relay token"]
+        scrollTo(token, in: app)
+        let importButton = app.buttons["Import certificate…"]
+        let replaceButton = app.buttons["Replace certificate…"]
+        if !importButton.exists && !replaceButton.exists { scrollTo(importButton, in: app) }
+        XCTAssertTrue(importButton.exists || replaceButton.exists, "certificate section missing")
+        XCTAssertTrue(app.staticTexts["Relay certificate"].exists || app.staticTexts["RELAY CERTIFICATE"].exists)
+    }
+
     /// Needs internet: Google must answer for the rewritten URL to show.
     func testSearchFromAddressBarIsForcedToSafeSearch() {
         let app = launch([:])

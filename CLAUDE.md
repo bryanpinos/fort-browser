@@ -43,10 +43,19 @@ only browser on the device.
   `probeURL` is nil the gate is `.open` (plain filtered browser mode, also what
   an App Store reviewer would see).
 - `Browser/BrowserView.swift` — `UIViewRepresentable` over `WKWebView`.
-  Proxy pin via `WKWebsiteDataStore.proxyConfigurations` (SOCKS5 or HTTP CONNECT).
+  Proxy pin via `WKWebsiteDataStore.proxyConfigurations` (Apple relay, SOCKS5
+  or HTTP CONNECT); `allowFailover = false` everywhere.
   Allow/deny enforced in `decidePolicyFor`; denylist also compiled into a
   `WKContentRuleList` so blocked hosts can't load as sub-resources. Only
   http/https/about schemes. Popups collapsed into the same view.
+- `Browser/RelayForwarder.swift` — loopback CONNECT proxy used when the relay
+  needs a client certificate: WKWebView can't present one on a relay hop
+  (Apple FB25401454), Network framework can. Per-launch Basic credentials,
+  80/443 only, 504 if the relay stalls (e.g. pending Local Network prompt).
+  `forwarderTrace` prints `FORT-FWD` lines in DEBUG builds only.
+- `Config/ClientIdentityStore.swift` — the relay client cert (.p12 + password)
+  in the keychain, ThisDeviceOnly; imported in Parent settings, never part of
+  `GateConfig`. iOS needs legacy-encrypted .p12 (`step ... p12 --legacy`).
 - `Browser/SafeSearch.swift` — rewrites Google/Bing/DDG URLs to strict mode.
 - `Browser/BrowserModel.swift` — observable chrome state; owns a weak WKWebView ref.
 - `Logging/ActivityLogger.swift` — 500-entry local ring buffer plus batched
@@ -59,26 +68,22 @@ only browser on the device.
   gate starts/stops with scene phase; logs flush on background.
 
 ## Home side (server/)
-`docker compose up` gives: nginx probe (`/ok` → 200, also serves `fort.json`
+`server/relay/` is the production path: Envoy relay (HTTP/2 CONNECT over
+TLS, mutual TLS against a private "Pinos Fort Client CA" with a watched
+device allowlist, token as second check) plus lego for its cert. Deployed on
+the NAS as `fort-relay`; details in the homelab wiki (wiki.example.com).
+The older `docker compose up` stack below gives: nginx probe (`/ok` → 200, also serves `fort.json`
 for one-URL device setup), Squid HTTP CONNECT proxy restricted to
 tailnet/LAN source ranges, and a tiny Python JSONL log collector. Bryan's
 real deployment is on a UGREEN NAS reachable over Tailscale at a 100.x address;
 page traffic exits his UniFi UCG-Fiber so its content filter applies.
 
 ## State of the code
-Written blind (no Xcode available where it was authored). It has **never been
-compiled**. First job is to get it building and running on a device. Things
-most likely to need attention:
-- `ProxyConfiguration` init signatures in `BrowserView.proxyConfiguration(for:)`
-  (Network framework, iOS 17).
-- `@Observable` classes mutated from `Task` contexts; strict-concurrency
-  warnings are acceptable for now, errors are not.
-- `switch true` pattern in `SafeSearch.swift` — valid Swift, but feel free to
-  rewrite as if/else if it bothers you.
-- `WKContentRuleListStore.default()` is implicitly unwrapped; guard it.
-- `LSApplicationQueriesSchemes: [tailscale]` is assumed; verify the Tailscale
-  iOS app actually registers that scheme, otherwise drop the deep link and
-  just show instructions.
+Builds clean (Xcode 27.2), unit + XCUITest suites pass (`xcodebuild test
+-scheme Fort`), and it has run on a real iPad (10th gen, iOS 27.0.1) through
+the NAS relay with mTLS. Branch `feature/relay-forwarder` holds the relay
+work; `main` is the pre-relay app. Tests inject config with the launch
+argument `-fort.config.json <hex>` (UserDefaults argument domain).
 
 ## Immediate backlog (in order)
 1. `xcodegen generate`, fix compile errors, run on simulator, then on iPad.
