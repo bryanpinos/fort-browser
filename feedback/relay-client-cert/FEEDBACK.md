@@ -10,6 +10,8 @@ screenshot/log from step 6.
 
 **Area:** WebKit, `WKWebsiteDataStore.proxyConfigurations`, Network framework relays
 
+**Type:** Incorrect/Unexpected Behavior
+
 **Summary**
 A `ProxyConfiguration(relayHops:)` whose hop has a client identity
 (`RelayHop(..., tlsOptions:)` with `sec_protocol_options_set_local_identity`)
@@ -21,6 +23,20 @@ never sends the certificate. The load fails with
 certificate", which names the destination site, not the relay, and
 `WKNavigationDelegate webView(_:didReceive:completionHandler:)` is never
 called, so the app can't supply the identity either.
+
+**Scope (not the managed relay)**
+This is the *per-app* relay a WKWebView gets from
+`WKWebsiteDataStore.proxyConfigurations`, not a system relay from a
+`com.apple.relay.managed` profile (`PayloadCertificateUUID`) or
+`NERelayManager` (`identityData`). Those are system-wide, need MDM or a
+NetworkExtension entitlement, and can't be scoped to one app's web view
+without MDM. The point of the per-app API is a single app (e.g. a kids'
+browser) pinning only its own web traffic, so it should support the same
+client authentication that URLSession already supports with this exact
+configuration. Also ruled out: HTTP/3 (only an HTTP/2 hop is configured and
+the relay is HTTP/2-only), late or post-handshake certificate requests (Envoy
+sends CertificateRequest in the initial TLS 1.3 handshake), and the advertised
+CA list (URLSession succeeds against the same relay and CA).
 
 **Steps to reproduce**
 1. `brew install envoy xcodegen`
