@@ -201,6 +201,23 @@ struct BrowserView: UIViewRepresentable {
             decisionHandler(.allow)
         }
 
+        /// Title + first 2,000 characters of visible text. Runs in an isolated
+        /// content world, so the page's own scripts can't see or tamper with it.
+        static let pageTextScript = """
+        (() => ({ title: document.title || "",
+                  text: (document.body ? document.body.innerText : "").replace(/\\s+/g, " ").trim().slice(0, 2000) }))()
+        """
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard logger.wantsPageText, let url = webView.url,
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+            webView.evaluateJavaScript(Self.pageTextScript, in: nil, in: .defaultClient) { [weak self] result in
+                guard case .success(let value) = result, let page = value as? [String: Any] else { return }
+                self?.logger.recordPage(url: url, title: page["title"] as? String ?? "",
+                                        text: page["text"] as? String ?? "")
+            }
+        }
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             model.isLoading = false
         }

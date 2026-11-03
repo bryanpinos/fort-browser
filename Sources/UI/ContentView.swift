@@ -48,12 +48,15 @@ struct ContentView: View {
         .onChange(of: store.config) { _, newValue in
             gate.apply(config: newValue)
             logger.apply(endpoint: newValue.logEndpoint)
+            syncLoggerUpload()
             forwarder.apply(newValue, identities: identities)
         }
         .onChange(of: identities.info) { _, _ in
             forwarder.apply(store.config, identities: identities)
             gate.apply(config: store.config)
+            syncLoggerUpload()
         }
+        .onAppear { syncLoggerUpload() }
         .onOpenURL { url in receiveCertificate(at: url) }
         .onChange(of: store.deviceName) { _, newValue in
             logger.deviceName = newValue
@@ -94,6 +97,20 @@ struct ContentView: View {
     /// Reads a certificate handed to Fort by another app, deletes the copy iOS
     /// placed in our Inbox (so no key bundle lingers on disk), and routes it
     /// through the parent PIN to Parent settings.
+    /// With a relay, activity (and page text, if enabled) goes to the relay's
+    /// /fort/ingest using this device's certificate; otherwise to logEndpoint.
+    private func syncLoggerUpload() {
+        let config = store.config
+        var ingest: ActivityLogger.Ingest?
+        if let proxy = config.proxy, proxy.kind == .relay,
+           let health = NetworkGate.relayHealthURL(for: proxy) {
+            ingest = .init(url: health.deletingLastPathComponent().appendingPathComponent("ingest"), token: proxy.authToken)
+        }
+        let identities = identities
+        logger.identityProvider = { identities.identity() }
+        logger.apply(ingest: ingest, reviewPages: config.reviewPages ?? false)
+    }
+
     /// Settings stay reachable even while the gate is closed (e.g. to fix
     /// the relay address); the PIN still protects them.
     private func openParentSettings() {

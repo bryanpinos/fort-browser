@@ -179,7 +179,10 @@ final class FortUITests: XCTestCase {
         let replaceButton = app.buttons["Replace certificate…"]
         if !importButton.exists && !replaceButton.exists { scrollTo(importButton, in: app) }
         XCTAssertTrue(importButton.exists || replaceButton.exists, "certificate section missing")
-        XCTAssertTrue(app.staticTexts["Relay certificate"].exists || app.staticTexts["RELAY CERTIFICATE"].exists)
+        // Page review is offered (off by default) only in relay mode.
+        let review = app.switches["Send page text home for review"]
+        scrollTo(review, in: app)
+        XCTAssertEqual(review.value as? String, "0", "page review must default to off")
     }
 
     /// Needs internet: Google must answer for the rewritten URL to show.

@@ -18,6 +18,7 @@ struct ParentSettingsView: View {
     @State private var proxyHost = ""
     @State private var proxyPort = "1080"
     @State private var proxyToken = ""
+    @State private var reviewPages = false
     @State private var showCertImporter = false
     @State private var pendingCertData: Data?
     @State private var certPassword = ""
@@ -81,6 +82,11 @@ struct ParentSettingsView: View {
 
                 if proxyEnabled && proxyKind == .relay {
                     relayCertificateSection
+                    Section {
+                        Toggle("Send page text home for review", isOn: $reviewPages)
+                    } header: { Text("Page review") } footer: {
+                        Text("Fort sends each page's address, title and first 2,000 characters of text to your home relay, where your own AI model checks it and alerts you. Nothing is sent anywhere else.")
+                    }
                 }
 
                 Section {
@@ -227,6 +233,7 @@ struct ParentSettingsView: View {
         proxyHost = draft.proxy?.host ?? ""
         proxyPort = draft.proxy.map { String($0.port) } ?? "1080"
         proxyToken = draft.proxy?.authToken ?? ""
+        reviewPages = draft.reviewPages ?? false
         certMessage = nil
         allowText = draft.allowlist.joined(separator: "\n")
         denyText = draft.denylist.joined(separator: "\n")
@@ -245,6 +252,7 @@ struct ParentSettingsView: View {
                                      port: UInt16(proxyPort) ?? (proxyKind == .relay ? 8443 : 1080),
                                      authToken: proxyKind == .relay && !proxyToken.isEmpty ? proxyToken : nil)
             : nil
+        cfg.reviewPages = proxyEnabled && proxyKind == .relay && reviewPages ? true : nil
         cfg.allowlist = lines(allowText)
         cfg.denylist = lines(denyText)
         if let home = URL(string: homeText.trimmingCharacters(in: .whitespaces)), home.host != nil { cfg.homeURL = home }

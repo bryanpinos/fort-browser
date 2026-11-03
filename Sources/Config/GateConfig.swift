@@ -34,6 +34,10 @@ struct GateConfig: Codable, Equatable {
     /// Logs stay on-device if this is nil.
     var logEndpoint: URL?
 
+    /// Send each page's address, title and first 2,000 characters of visible
+    /// text to the parent's relay for review (relay only; nil/false = off).
+    var reviewPages: Bool? = nil
+
     /// SHA-256 (hex) of the parent PIN. Nil means settings are unprotected.
     var parentPINHash: String?
 
