@@ -29,6 +29,9 @@ services:
     networks:
       fort_vlan:
         ipv4_address: 192.168.40.10
+        # Fixed (locally administered) MAC so UniFi sees one stable client;
+        # docker otherwise picks a new random MAC on every recreate.
+        mac_address: "02:46:6f:72:74:0a"
     dns: [192.168.40.1]
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
