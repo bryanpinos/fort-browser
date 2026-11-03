@@ -34,6 +34,7 @@ SENSORS = {
     "tunnels_1h": ("sensor", "Tunnels last hour", {"unit_of_measurement": "tunnels", "state_class": "measurement", "icon": "mdi:tunnel"}),
     "token_refused_1h": ("sensor", "Requests refused last hour", {"unit_of_measurement": "requests", "state_class": "measurement", "icon": "mdi:shield-alert"}),
     "tls_refused_1h": ("sensor", "TLS handshakes refused last hour", {"unit_of_measurement": "handshakes", "state_class": "measurement", "icon": "mdi:shield-lock"}),
+    "bad_cert_1h": ("sensor", "Rejected client certificates last hour", {"unit_of_measurement": "handshakes", "state_class": "measurement", "icon": "mdi:certificate-outline"}),
     "active_connections": ("sensor", "Active connections", {"unit_of_measurement": "connections", "state_class": "measurement", "icon": "mdi:lan-connect"}),
 }
 
@@ -43,6 +44,11 @@ COUNTERS = {
     # 2xx request count would also include every /fort/health check.)
     "tunnels_1h": ["cluster.dfp.upstream_cx_total"],
     "token_refused_1h": ["http.relay.downstream_rq_4xx"],
+    # A client certificate was presented but rejected (wrong CA, expired, or not
+    # on the allowlist): actionable, unlike scanners that present none.
+    "bad_cert_1h": ["listener.0.0.0.0_8443.ssl.fail_verify_error",
+                    "listener.0.0.0.0_8443.ssl.fail_verify_san",
+                    "listener.0.0.0.0_8443.ssl.fail_verify_cert_hash"],
     "tls_refused_1h": ["listener.0.0.0.0_8443.ssl.fail_verify_no_cert",
                        "listener.0.0.0.0_8443.ssl.fail_verify_error",
                        "listener.0.0.0.0_8443.ssl.fail_verify_san",

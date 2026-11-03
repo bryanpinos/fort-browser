@@ -81,6 +81,14 @@ struct ContentView: View {
                     model.load(text: model.urlText, homeURL: store.config.homeURL)
                     urlFocused = false
                 }
+                // Like Safari: tapping in selects the whole address, so typing
+                // replaces it instead of appending to it.
+                .onChange(of: urlFocused) { _, focused in
+                    guard focused, !model.urlText.isEmpty else { return }
+                    DispatchQueue.main.async {
+                        UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
+                    }
+                }
                 // Clear button while editing, like Safari's; keeps the keyboard up.
                 .overlay(alignment: .trailing) {
                     if urlFocused && !model.urlText.isEmpty {

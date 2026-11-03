@@ -108,6 +108,17 @@ final class FortUITests: XCTestCase {
                       "settings must stay reachable while the gate is closed")
     }
 
+    func testTappingTheAddressBarSelectsItSoTypingReplaces() {
+        let app = launch(["homeURL": "https://example.com/"])
+        let bar = addressBar(app)
+        let filled = NSPredicate(format: "value BEGINSWITH 'https://example.com'")
+        expectation(for: filled, evaluatedWith: bar)
+        waitForExpectations(timeout: 15)
+        bar.tap()
+        bar.typeText("dogs")
+        XCTAssertEqual(bar.value as? String, "dogs", "typing should replace the selected address, not append to it")
+    }
+
     func testClearButtonEmptiesTheAddressBar() {
         let app = launch([:])
         let bar = addressBar(app)
