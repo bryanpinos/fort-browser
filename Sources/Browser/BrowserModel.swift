@@ -15,7 +15,20 @@ final class BrowserModel: Identifiable {
     var canGoForward = false
     var isLoading = false
     var progress: Double = 0
+    /// Small banner for ordinary failures ("couldn't reach home", etc.).
     var blockedMessage: String?
+    /// Set when Fort blocked a page; the tab then shows the block page.
+    var block: Block?
+
+    struct Block: Equatable {
+        enum Reason: Equatable {
+            case notAllowed      // Fort's allow/deny lists
+            case blockedAtHome   // the home content filter (relay sinkhole)
+            case download        // Fort doesn't download files
+        }
+        var reason: Reason
+        var host: String
+    }
     /// True while the tab shows Fort's favorites start page instead of a site.
     var showsStartPage = false
 
@@ -26,6 +39,7 @@ final class BrowserModel: Identifiable {
     /// Tab strip label.
     var displayTitle: String {
         if showsStartPage { return "New Tab" }
+        if block != nil && (currentURL == nil || currentURL?.scheme == "about") { return "Blocked" }
         if !title.isEmpty { return title }
         return currentURL?.host ?? "Loading…"
     }
@@ -83,6 +97,7 @@ final class BrowserModel: Identifiable {
 
     func load(url: URL) {
         blockedMessage = nil
+        block = nil
         showsStartPage = false
         webView?.load(URLRequest(url: url))
     }
@@ -90,12 +105,23 @@ final class BrowserModel: Identifiable {
     /// Show the favorites start page in this tab.
     func showStartPage() {
         blockedMessage = nil
+        block = nil
         webView?.stopLoading()
         showsStartPage = true
         urlText = ""
     }
 
-    func goBack() { webView?.goBack() }
+    func goBack() {
+        if block != nil { block = nil; return }  // the blocked page never loaded
+        webView?.goBack()
+    }
+
+    /// Leave the block page: back to the page the kid was on, or the start
+    /// page if this tab had nothing else.
+    func dismissBlock() {
+        block = nil
+        if webView?.url == nil || webView?.url?.scheme == "about" { showStartPage() }
+    }
     func goForward() { webView?.goForward() }
     func reload() { webView?.reload() }
     func stop() { webView?.stopLoading() }

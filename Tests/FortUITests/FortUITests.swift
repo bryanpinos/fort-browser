@@ -31,7 +31,7 @@ final class FortUITests: XCTestCase {
         return app
     }
 
-    private var blockedText: String { "That site isn't on the allowed list." }
+    private var blockedText: String { "This one stays outside the fort" }
 
     private func addressBar(_ app: XCUIApplication) -> XCUIElement {
         app.textFields["Search or enter a site"]
@@ -190,6 +190,17 @@ final class FortUITests: XCTestCase {
         let clearCache = app.buttons["Clear cache (keeps sign-ins)"]
         scrollTo(clearCache, in: app)
         XCTAssertTrue(app.buttons["Clear all website data…"].exists)
+    }
+
+    func testBlockPageButtonsReturnToStartPage() {
+        let app = launch(["denylist": ["example.com"], "homeURL": "https://example.com"])
+        XCTAssertTrue(app.staticTexts[blockedText].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["example.com isn't on the list of places Fort can visit."].exists)
+        // Nothing loaded before the block in this tab, so only "Start page" is offered.
+        XCTAssertFalse(app.buttons["Go back"].exists)
+        app.buttons["Start page"].tap()
+        XCTAssertTrue(app.staticTexts["Where to?"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts[blockedText].exists)
     }
 
     func testNoPINOpensSettingsDirectly() {

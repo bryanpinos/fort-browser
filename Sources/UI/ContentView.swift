@@ -32,6 +32,11 @@ struct ContentView: View {
                     if model.showsStartPage {
                         StartPageView { model.load(url: $0) }
                     }
+                    if let block = model.block {
+                        BlockedPageView(block: block, canGoBack: model.webView?.url != nil,
+                                        goBack: { model.dismissBlock() },
+                                        startPage: { model.showStartPage() })
+                    }
                     if let message = model.blockedMessage {
                         blockedBanner(message)
                     }

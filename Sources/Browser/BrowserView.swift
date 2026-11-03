@@ -151,7 +151,7 @@ struct BrowserView: UIViewRepresentable {
             if !config.allows(host: url.host) {
                 logger.record(url: url, allowed: false, reason: "blocked host")
                 if navigationAction.targetFrame?.isMainFrame ?? true {
-                    model.blockedMessage = "That site isn't on the allowed list."
+                    model.block = .init(reason: .notAllowed, host: url.host ?? url.absoluteString)
                 }
                 decisionHandler(.cancel)
                 return
@@ -167,7 +167,7 @@ struct BrowserView: UIViewRepresentable {
 
             if navigationAction.shouldPerformDownload {
                 logger.record(url: url, allowed: false, reason: "download")
-                model.blockedMessage = "Fort doesn't download files."
+                model.block = .init(reason: .download, host: url.host ?? "")
                 decisionHandler(.cancel)
                 return
             }
@@ -231,7 +231,7 @@ struct BrowserView: UIViewRepresentable {
                 logger.record(url: url, allowed: false, reason: "download")
             }
             if navigationResponse.isForMainFrame {
-                model.blockedMessage = "Fort doesn't download files."
+                model.block = .init(reason: .download, host: navigationResponse.response.url?.host ?? "")
             }
             decisionHandler(.cancel)
         }
@@ -246,10 +246,13 @@ struct BrowserView: UIViewRepresentable {
             let nsError = error as NSError
             let relay = config.proxy?.kind == .relay
             let failure = Self.loadFailure(code: nsError.code, relay: relay, homeReachable: homeReachable())
-            if failure == .blockedAtHome, let url = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
-                logger.record(url: url, allowed: false, reason: "blocked at home")
+            let failingURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+            if failure == .blockedAtHome {
+                if let failingURL { logger.record(url: failingURL, allowed: false, reason: "blocked at home") }
+                model.block = .init(reason: .blockedAtHome, host: failingURL?.host ?? "")
+            } else if let message = failure?.message {
+                model.blockedMessage = message
             }
-            if let message = failure?.message { model.blockedMessage = message }
         }
 
         enum LoadFailure: Equatable {
