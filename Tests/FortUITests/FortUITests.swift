@@ -108,6 +108,21 @@ final class FortUITests: XCTestCase {
                       "settings must stay reachable while the gate is closed")
     }
 
+    func testClearButtonEmptiesTheAddressBar() {
+        let app = launch([:])
+        let bar = addressBar(app)
+        bar.tap()
+        bar.typeText("cats and dogs")
+        let clear = app.buttons["Clear address"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 3))
+        clear.tap()
+        let value = (bar.value as? String) ?? ""
+        XCTAssertTrue(value.isEmpty || value == bar.placeholderValue, "address bar should be empty, got \(value)")
+        XCTAssertFalse(app.buttons["Clear address"].exists, "button hides when there's nothing to clear")
+        bar.typeText("x")
+        XCTAssertEqual(bar.value as? String, "x", "keyboard stays up after clearing")
+    }
+
     func testNoPINOpensSettingsDirectly() {
         let app = launch([:])
         app.buttons["Parent settings"].tap()

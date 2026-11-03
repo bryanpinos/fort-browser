@@ -81,6 +81,20 @@ struct ContentView: View {
                     model.load(text: model.urlText, homeURL: store.config.homeURL)
                     urlFocused = false
                 }
+                // Clear button while editing, like Safari's; keeps the keyboard up.
+                .overlay(alignment: .trailing) {
+                    if urlFocused && !model.urlText.isEmpty {
+                        Button {
+                            model.urlText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear address")
+                    }
+                }
 
             Button { model.isLoading ? model.stop() : model.reload() } label: {
                 Image(systemName: model.isLoading ? "xmark" : "arrow.clockwise")
