@@ -23,8 +23,13 @@ services:
     container_name: fort-relay
     restart: unless-stopped
     command: ["-c", "/etc/envoy/envoy.yaml", "--disable-hot-restart", "--log-level", "warn"]
-    ports:
-      - "8443:8443"
+    # Own address on the Fort VLAN (40): the UCG applies the Kids content
+    # filter, SafeSearch, ad blocking and IPS to this source, and its firewall
+    # isolates the VLAN from the LAN. The WAN port forward targets this IP.
+    networks:
+      fort_vlan:
+        ipv4_address: 192.168.40.10
+    dns: [192.168.40.1]
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
       - ./certs:/certs:ro
@@ -118,11 +123,24 @@ services:
     mem_limit: 128m
     pids_limit: 32
 
-# Pinned: the NAS's net-shim drops anything from this subnet to the LAN,
-# tailnet and the host (see net-shim-reassert.sh, "fort_relay" table).
+# The relay itself is on the Fort VLAN (isolated by the UCG firewall). The
+# bridge network below still hosts relay-cert and ddns; it stays pinned so the
+# NAS's net-shim "fort_relay" table keeps them off the LAN too.
 networks:
   default:
     ipam:
       config:
         - subnet: 172.22.0.0/16
   lan: {}
+  # Macvlan on VLAN 40 (docker creates eth0.40). The NAS's switch port carries
+  # all VLANs tagged. Like Caddy's macvlan, the NAS host itself can't reach
+  # this address directly; everything goes through the UCG.
+  fort_vlan:
+    driver: macvlan
+    driver_opts:
+      parent: eth0.40
+    ipam:
+      config:
+        - subnet: 192.168.40.0/24
+          gateway: 192.168.40.1
+          ip_range: 192.168.40.8/29
