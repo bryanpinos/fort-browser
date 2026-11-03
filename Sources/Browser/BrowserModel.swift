@@ -2,20 +2,33 @@ import Foundation
 import Observation
 import WebKit
 
-/// UI-facing state for the browser chrome. The WKWebView itself lives in
-/// `BrowserView`'s coordinator; this object is what SwiftUI binds to.
+/// One browser tab: UI-facing state plus the WKWebView and its delegate.
+/// Tabs own their web view (rather than the SwiftUI view owning it) so that
+/// switching tabs never reloads a page. Created and managed by `TabsModel`.
 @Observable
-final class BrowserModel {
+final class BrowserModel: Identifiable {
+    let id = UUID()
     var urlText: String = ""
     var currentURL: URL?
+    var title: String = ""
     var canGoBack = false
     var canGoForward = false
     var isLoading = false
     var progress: Double = 0
     var blockedMessage: String?
+    /// True while the tab shows Fort's favorites start page instead of a site.
+    var showsStartPage = false
 
-    /// Set by the coordinator; weak so the view owns the WebView.
-    weak var webView: WKWebView?
+    /// The tab's web view and delegate (set by `TabsModel`).
+    @ObservationIgnored var webView: WKWebView?
+    @ObservationIgnored var coordinator: BrowserView.TabCoordinator?
+
+    /// Tab strip label.
+    var displayTitle: String {
+        if showsStartPage { return "New Tab" }
+        if !title.isEmpty { return title }
+        return currentURL?.host ?? "Loading…"
+    }
 
     func load(text: String, homeURL: URL) {
         guard let url = Self.destination(for: text) else { return }
@@ -70,7 +83,16 @@ final class BrowserModel {
 
     func load(url: URL) {
         blockedMessage = nil
+        showsStartPage = false
         webView?.load(URLRequest(url: url))
+    }
+
+    /// Show the favorites start page in this tab.
+    func showStartPage() {
+        blockedMessage = nil
+        webView?.stopLoading()
+        showsStartPage = true
+        urlText = ""
     }
 
     func goBack() { webView?.goBack() }

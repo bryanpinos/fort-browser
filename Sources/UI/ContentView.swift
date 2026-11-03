@@ -6,8 +6,11 @@ struct ContentView: View {
     @Environment(ActivityLogger.self) private var logger
     @Environment(RelayForwarder.self) private var forwarder
     @Environment(ClientIdentityStore.self) private var identities
+    @Environment(TabsModel.self) private var tabs
+    @Environment(FavoritesStore.self) private var favorites
 
-    @State private var model = BrowserModel()
+    /// The selected tab; the address bar and toolbar act on it.
+    private var model: BrowserModel { tabs.selected }
     @State private var showPIN = false
     @State private var showSettings = false
     /// A .p12 opened in Fort (AirDrop / Files "Open in"), waiting for the
@@ -19,11 +22,16 @@ struct ContentView: View {
         ZStack {
             VStack(spacing: 0) {
                 addressBar
-                if model.isLoading {
+                TabStrip()
+                if model.isLoading && !model.showsStartPage {
                     ProgressView(value: model.progress).progressViewStyle(.linear)
                 }
                 ZStack {
-                    BrowserView(model: model, config: store.config, logger: logger, forwarder: forwarder, identities: identities, gate: gate)
+                    BrowserView(tab: model)
+                        .opacity(model.showsStartPage ? 0 : 1)
+                    if model.showsStartPage {
+                        StartPageView { model.load(url: $0) }
+                    }
                     if let message = model.blockedMessage {
                         blockedBanner(message)
                     }
@@ -46,17 +54,26 @@ struct ContentView: View {
             ParentSettingsView(incomingCertificate: $incomingCertificate)
         }
         .onChange(of: store.config) { _, newValue in
+            tabs.apply(config: newValue)
+            tabs.applyProxies(forwarder: forwarder, identities: identities)
             gate.apply(config: newValue)
             logger.apply(endpoint: newValue.logEndpoint)
             syncLoggerUpload()
             forwarder.apply(newValue, identities: identities)
         }
+        .onChange(of: forwarder.port) { _, _ in
+            tabs.applyProxies(forwarder: forwarder, identities: identities)
+        }
         .onChange(of: identities.info) { _, _ in
+            tabs.applyProxies(forwarder: forwarder, identities: identities)
             forwarder.apply(store.config, identities: identities)
             gate.apply(config: store.config)
             syncLoggerUpload()
         }
-        .onAppear { syncLoggerUpload() }
+        .onAppear {
+            tabs.applyProxies(forwarder: forwarder, identities: identities)
+            syncLoggerUpload()
+        }
         .onOpenURL { url in receiveCertificate(at: url) }
         .onChange(of: store.deviceName) { _, newValue in
             logger.deviceName = newValue
@@ -71,7 +88,7 @@ struct ContentView: View {
                 .disabled(!model.canGoForward)
             Button { model.load(url: store.config.homeURL) } label: { Image(systemName: "house") }
 
-            TextField("Search or enter a site", text: $model.urlText)
+            TextField("Search or enter a site", text: Binding(get: { model.urlText }, set: { model.urlText = $0 }))
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.webSearch)
                 .textInputAutocapitalization(.never)
@@ -104,6 +121,20 @@ struct ContentView: View {
                     }
                 }
 
+            Button {
+                if let url = model.currentURL { favorites.toggle(url, title: model.title) }
+            } label: {
+                Image(systemName: favorites.isFavorite(model.currentURL, parent: store.config.favorites) ? "star.fill" : "star")
+            }
+            .disabled(model.showsStartPage || model.currentURL?.host == nil)
+            .accessibilityLabel("Favorite")
+
+            Button {
+                model.webView?.findInteraction?.presentFindNavigator(showingReplace: false)
+            } label: { Image(systemName: "magnifyingglass") }
+            .disabled(model.showsStartPage)
+            .accessibilityLabel("Find on page")
+
             Button { model.isLoading ? model.stop() : model.reload() } label: {
                 Image(systemName: model.isLoading ? "xmark" : "arrow.clockwise")
             }
@@ -116,9 +147,6 @@ struct ContentView: View {
         .background(.bar)
     }
 
-    /// Reads a certificate handed to Fort by another app, deletes the copy iOS
-    /// placed in our Inbox (so no key bundle lingers on disk), and routes it
-    /// through the parent PIN to Parent settings.
     /// With a relay, activity (and page text, if enabled) goes to the relay's
     /// /fort/ingest using this device's certificate; otherwise to logEndpoint.
     private func syncLoggerUpload() {
@@ -139,6 +167,9 @@ struct ContentView: View {
         if store.config.parentPINHash == nil { showSettings = true } else { showPIN = true }
     }
 
+    /// Reads a certificate handed to Fort by another app, deletes the copy iOS
+    /// placed in our Inbox (so no key bundle lingers on disk), and routes it
+    /// through the parent PIN to Parent settings.
     private func receiveCertificate(at url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         let data = try? Data(contentsOf: url)

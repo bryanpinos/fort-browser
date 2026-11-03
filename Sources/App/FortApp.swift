@@ -7,6 +7,8 @@ struct FortApp: App {
     @State private var logger: ActivityLogger
     @State private var forwarder = RelayForwarder()
     @State private var identities: ClientIdentityStore
+    @State private var tabs: TabsModel
+    @State private var favorites = FavoritesStore()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -18,6 +20,9 @@ struct FortApp: App {
         let logger = ActivityLogger(endpoint: store.config.logEndpoint)
         logger.deviceName = store.deviceName
         _logger = State(initialValue: logger)
+        let gate = _gate.wrappedValue
+        _tabs = State(initialValue: TabsModel(config: store.config, logger: logger,
+                                              homeReachable: { gate.state == .connected }))
     }
 
     var body: some Scene {
@@ -28,6 +33,8 @@ struct FortApp: App {
                 .environment(logger)
                 .environment(forwarder)
                 .environment(identities)
+                .environment(tabs)
+                .environment(favorites)
                 .onAppear {
                     forwarder.apply(store.config, identities: identities)
                     gate.start()

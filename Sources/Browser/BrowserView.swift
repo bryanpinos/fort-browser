@@ -3,82 +3,36 @@ import WebKit
 import Network
 import Security
 
-/// SwiftUI wrapper around WKWebView that enforces the parent's config:
-///  - all traffic pinned through an optional proxy (WKWebsiteDataStore.proxyConfigurations)
+/// Shows the selected tab's WKWebView. Tabs own their web views (see
+/// `TabsModel`), so switching tabs just swaps which one is on screen. The
+/// policy every tab enforces lives in `Coordinator` below:
+///  - all traffic pinned through an optional proxy (shared website data store)
 ///  - allow/deny host rules on every top-level and sub-frame navigation
-///  - denylist additionally compiled into a WKContentRuleList so sub-resources are blocked too
+///  - denylist also compiled into a WKContentRuleList so sub-resources are blocked
 ///  - strict safe search re-applied on each navigation
+///  - no downloads; only http(s)/about schemes
 ///  - every decision logged
 struct BrowserView: UIViewRepresentable {
 
-    let model: BrowserModel
-    let config: GateConfig
-    let logger: ActivityLogger
-    let forwarder: RelayForwarder
-    let identities: ClientIdentityStore
-    let gate: NetworkGate
+    let tab: BrowserModel
 
-    func makeCoordinator() -> Coordinator {
-        let coordinator = Coordinator(model: model, config: config, logger: logger)
-        let gate = gate
-        coordinator.homeReachable = { gate.state == .connected }
-        return coordinator
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .systemBackground
+        show(tab, in: container)
+        return container
     }
 
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.allowsInlineMediaPlayback = true
-        configuration.defaultWebpagePreferences.preferredContentMode = .mobile
-
-        let store = WKWebsiteDataStore.default()
-        store.proxyConfigurations = webKitProxies()
-        context.coordinator.appliedForwarderPort = forwarder.port
-        context.coordinator.appliedHasIdentity = identities.hasIdentity
-        configuration.websiteDataStore = store
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.uiDelegate = context.coordinator
-        webView.allowsBackForwardNavigationGestures = true
-        webView.customUserAgent = nil
-
-        context.coordinator.attach(webView)
-        context.coordinator.installContentRules(on: webView)
-
-        model.webView = webView
-        webView.load(URLRequest(url: config.homeURL))
-        return webView
+    func updateUIView(_ container: UIView, context: Context) {
+        show(tab, in: container)
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        let coordinator = context.coordinator
-        let configChanged = coordinator.config != config
-        if configChanged || coordinator.appliedForwarderPort != forwarder.port
-            || coordinator.appliedHasIdentity != identities.hasIdentity {
-            coordinator.config = config
-            coordinator.appliedForwarderPort = forwarder.port
-            coordinator.appliedHasIdentity = identities.hasIdentity
-            webView.configuration.websiteDataStore.proxyConfigurations = webKitProxies()
-        }
-        if configChanged {
-            coordinator.installContentRules(on: webView)
-        }
-    }
-
-    /// What WebKit itself should use as its proxy.
-    private func webKitProxies() -> [ProxyConfiguration] {
-        guard let proxy = config.proxy else { return [] }
-        guard Self.usesForwarder(proxy, hasIdentity: identities.hasIdentity) else {
-            return [Self.proxyConfiguration(for: proxy, identity: nil)]
-        }
-        // WebKit can't present client certs to a relay, so it goes through the
-        // in-app forwarder. Until that's listening, point at a closed loopback
-        // port (9, discard) so nothing loads.
-        let port = forwarder.port.flatMap(NWEndpoint.Port.init(rawValue:)) ?? 9
-        var local = ProxyConfiguration(httpCONNECTProxy: .hostPort(host: "127.0.0.1", port: port))
-        local.applyCredential(username: forwarder.username, password: forwarder.password)
-        local.allowFailover = false
-        return [local]
+    private func show(_ tab: BrowserModel, in container: UIView) {
+        guard let webView = tab.webView, webView.superview !== container else { return }
+        container.subviews.forEach { $0.removeFromSuperview() }
+        webView.frame = container.bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        container.addSubview(webView)
     }
 
     /// A relay plus an installed client certificate needs the in-app forwarder.
@@ -114,15 +68,21 @@ struct BrowserView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class TabCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let model: BrowserModel
         var config: GateConfig
-        var appliedForwarderPort: UInt16?
-        var appliedHasIdentity = false
         /// Whether Fort's home check currently passes (relay mode).
         var homeReachable: () -> Bool = { false }
+        /// Opens a link in a new tab; returns false at the tab limit.
+        var openInNewTab: (URL) -> Bool = { _ in false }
+        /// Called when the tab's URL changes (to save open tabs).
+        var urlChanged: () -> Void = {}
         let logger: ActivityLogger
         private var observations: [NSKeyValueObservation] = []
+        /// Last URL whose page text was captured, so a full load and an
+        /// in-page (SPA) URL change don't both capture the same page.
+        private var lastCapturedURL: URL?
+        private var spaWorkItem: DispatchWorkItem?
 
         init(model: BrowserModel, config: GateConfig, logger: ActivityLogger) {
             self.model = model
@@ -137,9 +97,13 @@ struct BrowserView: UIViewRepresentable {
                 webView.observe(\.isLoading) { [weak self] wv, _ in self?.model.isLoading = wv.isLoading },
                 webView.observe(\.estimatedProgress) { [weak self] wv, _ in self?.model.progress = wv.estimatedProgress },
                 webView.observe(\.url) { [weak self] wv, _ in
-                    self?.model.currentURL = wv.url
-                    self?.model.urlText = wv.url?.absoluteString ?? ""
+                    guard let self else { return }
+                    self.model.currentURL = wv.url
+                    if !self.model.showsStartPage { self.model.urlText = wv.url?.absoluteString ?? "" }
+                    self.urlChanged()
+                    self.noteURLChange(in: wv)
                 },
+                webView.observe(\.title) { [weak self] wv, _ in self?.model.title = wv.title ?? "" },
             ]
         }
 
@@ -201,7 +165,15 @@ struct BrowserView: UIViewRepresentable {
                 return
             }
 
+            if navigationAction.shouldPerformDownload {
+                logger.record(url: url, allowed: false, reason: "download")
+                model.blockedMessage = "Fort doesn't download files."
+                decisionHandler(.cancel)
+                return
+            }
+
             if navigationAction.targetFrame?.isMainFrame ?? true {
+                lastCapturedURL = nil
                 logger.record(url: url, allowed: true)
             }
             decisionHandler(.allow)
@@ -215,13 +187,53 @@ struct BrowserView: UIViewRepresentable {
         """
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard logger.wantsPageText, let url = webView.url,
+            capturePage(in: webView)
+        }
+
+        private func capturePage(in webView: WKWebView) {
+            guard logger.wantsPageText, let url = webView.url, url != lastCapturedURL,
                   ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+            lastCapturedURL = url
             webView.evaluateJavaScript(Self.pageTextScript, in: nil, in: .defaultClient) { [weak self] result in
                 guard case .success(let value) = result, let page = value as? [String: Any] else { return }
                 self?.logger.recordPage(url: url, title: page["title"] as? String ?? "",
                                         text: page["text"] as? String ?? "")
             }
+        }
+
+        /// Single-page sites (YouTube and the like) change the URL without a
+        /// navigation, so decidePolicyFor/didFinish never fire. Treat a settled
+        /// in-page URL change as a page view: log it and capture its text.
+        /// (It can't change host, so allow/deny already applied.)
+        private func noteURLChange(in webView: WKWebView) {
+            spaWorkItem?.cancel()
+            guard !webView.isLoading, let url = webView.url, url != lastCapturedURL,
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+            let work = DispatchWorkItem { [weak self, weak webView] in
+                guard let self, let webView, !webView.isLoading, webView.url == url else { return }
+                self.logger.record(url: url, allowed: true, reason: "in-page")
+                self.capturePage(in: webView)
+            }
+            spaWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+        }
+
+        // MARK: Downloads
+
+        /// Fort shows pages, PDFs and images, but never downloads files.
+        func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                     decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            if navigationResponse.canShowMIMEType {
+                decisionHandler(.allow)
+                return
+            }
+            if let url = navigationResponse.response.url {
+                logger.record(url: url, allowed: false, reason: "download")
+            }
+            if navigationResponse.isForMainFrame {
+                model.blockedMessage = "Fort doesn't download files."
+            }
+            decisionHandler(.cancel)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -266,11 +278,12 @@ struct BrowserView: UIViewRepresentable {
             return certificateErrors.contains(code) ? .blockedAtHome : .siteFailed
         }
 
-        // Open target="_blank" links in the same view instead of a popup.
+        // target="_blank" links and window.open open a new tab (through the
+        // same policy as any navigation); at the tab limit, the same tab.
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                      for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-                webView.load(URLRequest(url: url))
+                if !openInNewTab(url) { webView.load(URLRequest(url: url)) }
             }
             return nil
         }

@@ -24,7 +24,9 @@ final class FortUITests: XCTestCase {
         let data = try! JSONSerialization.data(withJSONObject: cfg)
         let hex = data.map { String(format: "%02x", $0) }.joined()
         let app = XCUIApplication()
-        app.launchArguments = ["-fort.config.json", "<\(hex)>", "-fort.deviceName", ""]
+        app.launchArguments = ["-fort.config.json", "<\(hex)>", "-fort.deviceName", "",
+                              // Isolation: no tabs or kid favorites carried over from earlier tests.
+                              "-fort.noTabRestore", "YES", "-fort.kidFavorites", "<>"]
         app.launch()
         return app
     }
@@ -132,6 +134,62 @@ final class FortUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Clear address"].exists, "button hides when there's nothing to clear")
         bar.typeText("x")
         XCTAssertEqual(bar.value as? String, "x", "keyboard stays up after clearing")
+    }
+
+    // MARK: Tabs and favorites
+
+    private var tabs: XCUIElementQuery { XCUIApplication().buttons.matching(identifier: "tab") }
+
+    func testNewTabOpensStartPageAndClosingKeepsOneTab() {
+        let app = launch([:])
+        XCTAssertEqual(tabs.count, 1)
+        app.buttons["New tab"].tap()
+        XCTAssertEqual(tabs.count, 2)
+        XCTAssertTrue(app.staticTexts["Where to?"].waitForExistence(timeout: 5))
+        app.buttons["Close tab"].firstMatch.tap()
+        XCTAssertEqual(tabs.count, 1)
+        app.buttons["Close tab"].firstMatch.tap()
+        XCTAssertEqual(tabs.count, 1, "closing the last tab leaves a fresh start page")
+        XCTAssertTrue(app.staticTexts["Where to?"].waitForExistence(timeout: 5))
+    }
+
+    func testTabLimit() {
+        let app = launch([:])
+        for _ in 1..<8 { app.buttons["New tab"].tap() }
+        XCTAssertEqual(tabs.count, 8)
+        XCTAssertFalse(app.buttons["New tab"].isEnabled, "8 tabs is the limit")
+    }
+
+    func testParentFavoritesShowOnTheStartPageAndOpen() {
+        let app = launch(["favorites": [["name": "Example", "url": "https://example.com/"]]])
+        app.buttons["New tab"].tap()
+        let tile = app.buttons["Example"]
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        tile.tap()
+        let opened = NSPredicate(format: "value BEGINSWITH 'https://example.com'")
+        expectation(for: opened, evaluatedWith: addressBar(app))
+        waitForExpectations(timeout: 15)
+    }
+
+    func testStarAddsTheSiteToTheStartPage() {
+        let app = launch(["homeURL": "https://example.com/"])
+        let star = app.buttons["Favorite"]
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: star)
+        waitForExpectations(timeout: 15)
+        star.tap()
+        app.buttons["New tab"].tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "favorite-tile").firstMatch.waitForExistence(timeout: 5),
+                      "starred site should appear as a tile")
+    }
+
+    func testParentSettingsOffersWebsiteDataClearing() {
+        let app = launch([:])
+        app.buttons["Parent settings"].tap()
+        XCTAssertTrue(app.navigationBars["Parent settings"].waitForExistence(timeout: 5))
+        let clearCache = app.buttons["Clear cache (keeps sign-ins)"]
+        scrollTo(clearCache, in: app)
+        XCTAssertTrue(app.buttons["Clear all website data…"].exists)
     }
 
     func testNoPINOpensSettingsDirectly() {

@@ -116,7 +116,7 @@ final class PageTextScriptTests: XCTestCase {
             """, baseURL: URL(string: "https://cats.example/"))
         await fulfillment(of: [loaded], timeout: 10)
         let viaHandler: Any? = await withCheckedContinuation { c in
-            webView.evaluateJavaScript(BrowserView.Coordinator.pageTextScript, in: nil, in: .defaultClient) { r in
+            webView.evaluateJavaScript(BrowserView.TabCoordinator.pageTextScript, in: nil, in: .defaultClient) { r in
                 c.resume(returning: try? r.get())
             }
         }
@@ -134,7 +134,7 @@ final class PageTextScriptTests: XCTestCase {
 }
 
 final class LoadFailureMessageTests: XCTestCase {
-    typealias C = BrowserView.Coordinator
+    typealias C = BrowserView.TabCoordinator
 
     func testHomeFilterBlockPageReadsAsBlocked() {
         XCTAssertEqual(C.loadFailure(code: NSURLErrorServerCertificateUntrusted, relay: true, homeReachable: true), .blockedAtHome)

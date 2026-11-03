@@ -34,6 +34,15 @@ struct GateConfig: Codable, Equatable {
     /// Logs stay on-device if this is nil.
     var logEndpoint: URL?
 
+    /// Sites shown on the start page for every device using this config
+    /// (kids can add their own on each iPad). Nil = none.
+    var favorites: [Favorite]? = nil
+
+    struct Favorite: Codable, Equatable, Hashable {
+        var name: String
+        var url: URL
+    }
+
     /// Send each page's address, title and first 2,000 characters of visible
     /// text to the parent's relay for review (relay only; nil/false = off).
     var reviewPages: Bool? = nil

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import WebKit
 
 /// PIN-protected configuration screen. Everything here round-trips through
 /// `GateConfig` JSON so a parent can also just paste a config exported from
@@ -19,6 +20,9 @@ struct ParentSettingsView: View {
     @State private var proxyPort = "1080"
     @State private var proxyToken = ""
     @State private var reviewPages = false
+    @State private var favoritesText = ""
+    @State private var dataMessage: String?
+    @State private var confirmClearAll = false
     @State private var showCertImporter = false
     @State private var pendingCertData: Data?
     @State private var certPassword = ""
@@ -97,6 +101,26 @@ struct ParentSettingsView: View {
                     Toggle("Force strict safe search", isOn: $draft.enforceSafeSearch)
                 } header: { Text("Sites") } footer: {
                     Text("Subdomains match automatically. Blocked hosts win over allowed hosts.")
+                }
+
+                Section {
+                    TextField("One per line: address, then a name\npbskids.org PBS Kids", text: $favoritesText, axis: .vertical)
+                        .lineLimit(3...10).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("Favorites") } footer: {
+                    Text("Shown on the start page of every iPad using these settings. Kids can add their own with the star.")
+                }
+
+                Section {
+                    Button("Clear cache (keeps sign-ins)") { clearWebsiteData(all: false) }
+                    Button("Clear all website data…", role: .destructive) { confirmClearAll = true }
+                    if let dataMessage { Text(dataMessage).font(.footnote).foregroundStyle(.secondary) }
+                } header: { Text("Website data") } footer: {
+                    Text("Doesn't touch the activity log or anything sent home.")
+                }
+                .confirmationDialog("Clear all website data?", isPresented: $confirmClearAll, titleVisibility: .visible) {
+                    Button("Clear everything", role: .destructive) { clearWebsiteData(all: true) }
+                } message: {
+                    Text("This signs Fort out of every site (school accounts, games). Saved favorites and settings stay.")
                 }
 
                 Section("General") {
@@ -203,6 +227,16 @@ struct ParentSettingsView: View {
         }
     }
 
+    private func clearWebsiteData(all: Bool) {
+        let types: Set<String> = all ? WKWebsiteDataStore.allWebsiteDataTypes() : [
+            WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeFetchCache, WKWebsiteDataTypeOfflineWebApplicationCache,
+        ]
+        WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: .distantPast) {
+            dataMessage = all ? "All website data cleared. Sites will ask kids to sign in again." : "Cache cleared."
+        }
+    }
+
     private func importPendingCertificate() {
         guard let data = pendingCertData else { return }
         pendingCertData = nil
@@ -234,6 +268,8 @@ struct ParentSettingsView: View {
         proxyPort = draft.proxy.map { String($0.port) } ?? "1080"
         proxyToken = draft.proxy?.authToken ?? ""
         reviewPages = draft.reviewPages ?? false
+        favoritesText = FavoritesStore.format(draft.favorites)
+        dataMessage = nil
         certMessage = nil
         allowText = draft.allowlist.joined(separator: "\n")
         denyText = draft.denylist.joined(separator: "\n")
@@ -253,6 +289,8 @@ struct ParentSettingsView: View {
                                      authToken: proxyKind == .relay && !proxyToken.isEmpty ? proxyToken : nil)
             : nil
         cfg.reviewPages = proxyEnabled && proxyKind == .relay && reviewPages ? true : nil
+        let parsedFavorites = FavoritesStore.parse(favoritesText)
+        cfg.favorites = parsedFavorites.isEmpty ? nil : parsedFavorites
         cfg.allowlist = lines(allowText)
         cfg.denylist = lines(denyText)
         if let home = URL(string: homeText.trimmingCharacters(in: .whitespaces)), home.host != nil { cfg.homeURL = home }
