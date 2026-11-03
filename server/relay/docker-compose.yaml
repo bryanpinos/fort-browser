@@ -75,6 +75,49 @@ services:
     mem_limit: 64m
     pids_limit: 32
 
+  # Page review. ingest shares the relay's network namespace (loopback only,
+  # reachable just from Envoy); worker sits on an ordinary network to reach
+  # LM Studio and MQTT. They share nothing but ./review (the SQLite queue).
+  ingest:
+    image: python:3.12-alpine
+    container_name: fort-relay-ingest
+    restart: unless-stopped
+    network_mode: "service:relay"
+    depends_on: [relay]
+    user: "1000:10"
+    command: ["python", "-u", "/ingest.py"]
+    volumes:
+      - ./ingest.py:/ingest.py:ro
+      - ./review:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+
+  worker:
+    image: python:3.12-alpine
+    container_name: fort-review-worker
+    restart: unless-stopped
+    networks: [lan]
+    user: "1000:10"
+    command: ["python", "-u", "/worker.py"]
+    environment:
+      LLM_URL: http://192.168.1.20:1234/v1/chat/completions
+      LLM_MODEL: gemma-4-31b-it
+      MQTT_HOST: 192.168.1.10
+      SUMMARY_AT: "19:30"
+      RETENTION_DAYS: "30"
+    volumes:
+      - ./worker.py:/worker.py:ro
+      - ./review:/data
+      - /etc/localtime:/etc/localtime:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 32
+
 # Pinned: the NAS's net-shim drops anything from this subnet to the LAN,
 # tailnet and the host (see net-shim-reassert.sh, "fort_relay" table).
 networks:
@@ -82,3 +125,4 @@ networks:
     ipam:
       config:
         - subnet: 172.22.0.0/16
+  lan: {}
