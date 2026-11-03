@@ -16,9 +16,13 @@ struct BrowserView: UIViewRepresentable {
     let logger: ActivityLogger
     let forwarder: RelayForwarder
     let identities: ClientIdentityStore
+    let gate: NetworkGate
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(model: model, config: config, logger: logger)
+        let coordinator = Coordinator(model: model, config: config, logger: logger)
+        let gate = gate
+        coordinator.homeReachable = { gate.state == .connected }
+        return coordinator
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -115,6 +119,8 @@ struct BrowserView: UIViewRepresentable {
         var config: GateConfig
         var appliedForwarderPort: UInt16?
         var appliedHasIdentity = false
+        /// Whether Fort's home check currently passes (relay mode).
+        var homeReachable: () -> Bool = { false }
         let logger: ActivityLogger
         private var observations: [NSKeyValueObservation] = []
 
@@ -226,11 +232,38 @@ struct BrowserView: UIViewRepresentable {
             forwarderTrace("page load failed: \((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)")
             model.isLoading = false
             let nsError = error as NSError
-            if nsError.code != NSURLErrorCancelled {
-                model.blockedMessage = config.proxy?.kind == .relay
-                    ? "Couldn't reach home. Check Wi-Fi, and that Local Network is allowed for Fort in Settings."
-                    : "Couldn't load that page."
+            let relay = config.proxy?.kind == .relay
+            let failure = Self.loadFailure(code: nsError.code, relay: relay, homeReachable: homeReachable())
+            if failure == .blockedAtHome, let url = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL {
+                logger.record(url: url, allowed: false, reason: "blocked at home")
             }
+            if let message = failure?.message { model.blockedMessage = message }
+        }
+
+        enum LoadFailure: Equatable {
+            case blockedAtHome, siteFailed, homeUnreachable, generic
+
+            var message: String {
+                switch self {
+                case .blockedAtHome: return "This site is blocked at home."
+                case .siteFailed: return "That site couldn't be opened. Try again in a little while."
+                case .homeUnreachable: return "Couldn't reach home. Check Wi-Fi, and that Local Network is allowed for Fort in Settings."
+                case .generic: return "Couldn't load that page."
+                }
+            }
+        }
+
+        /// Classifies a failed page load. With a relay and home reachable, a
+        /// certificate error means the home filter answered with its block page
+        /// (the UCG sinkholes blocked names and presents its own certificate).
+        static func loadFailure(code: Int, relay: Bool, homeReachable: Bool) -> LoadFailure? {
+            if code == NSURLErrorCancelled { return nil }
+            guard relay else { return .generic }
+            guard homeReachable else { return .homeUnreachable }
+            let certificateErrors = [NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasUnknownRoot,
+                                     NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateNotYetValid,
+                                     NSURLErrorSecureConnectionFailed]
+            return certificateErrors.contains(code) ? .blockedAtHome : .siteFailed
         }
 
         // Open target="_blank" links in the same view instead of a popup.

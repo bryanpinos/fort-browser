@@ -23,7 +23,7 @@ struct ContentView: View {
                     ProgressView(value: model.progress).progressViewStyle(.linear)
                 }
                 ZStack {
-                    BrowserView(model: model, config: store.config, logger: logger, forwarder: forwarder, identities: identities)
+                    BrowserView(model: model, config: store.config, logger: logger, forwarder: forwarder, identities: identities, gate: gate)
                     if let message = model.blockedMessage {
                         blockedBanner(message)
                     }

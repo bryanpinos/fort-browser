@@ -132,3 +132,27 @@ final class PageTextScriptTests: XCTestCase {
         XCTAssertFalse(text.contains("hidden paragraph"), "hidden elements aren't visible text")
     }
 }
+
+final class LoadFailureMessageTests: XCTestCase {
+    typealias C = BrowserView.Coordinator
+
+    func testHomeFilterBlockPageReadsAsBlocked() {
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorServerCertificateUntrusted, relay: true, homeReachable: true), .blockedAtHome)
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorServerCertificateHasUnknownRoot, relay: true, homeReachable: true), .blockedAtHome)
+    }
+
+    func testOtherFailuresWhileHomeIsUpBlameTheSite() {
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorCannotConnectToHost, relay: true, homeReachable: true), .siteFailed)
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorTimedOut, relay: true, homeReachable: true), .siteFailed)
+    }
+
+    func testOnlyBlameHomeWhenTheHomeCheckFails() {
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorServerCertificateUntrusted, relay: true, homeReachable: false), .homeUnreachable)
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorTimedOut, relay: true, homeReachable: false), .homeUnreachable)
+    }
+
+    func testNonRelayAndCancelled() {
+        XCTAssertEqual(C.loadFailure(code: NSURLErrorTimedOut, relay: false, homeReachable: false), .generic)
+        XCTAssertNil(C.loadFailure(code: NSURLErrorCancelled, relay: true, homeReachable: true))
+    }
+}
