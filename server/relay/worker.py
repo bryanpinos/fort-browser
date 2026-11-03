@@ -102,19 +102,52 @@ def local_midnight_utc():
 
 # --- classification -----------------------------------------------------------
 
+class BadAnswer(Exception):
+    """The LLM answered, but not with usable JSON (don't back off for this)."""
+
+
+# LM Studio enforces this schema (structured output), so Gemma can't return
+# malformed JSON; parse_verdict below is only a fallback.
+SCHEMA = {
+    "name": "page_verdict",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "category": {"type": "string", "enum": CATEGORIES},
+            "concern": {"type": "integer", "minimum": 0, "maximum": 3},
+            "summary": {"type": "string"},
+        },
+        "required": ["category", "concern", "summary"],
+        "additionalProperties": False,
+    },
+}
+
+
+def parse_verdict(content):
+    # Gemma often wraps JSON in a ```json fence: take the outermost {...};
+    # tolerate trailing commas.
+    m = re.search(r"\{.*\}", content, re.S)
+    if not m:
+        raise BadAnswer(f"no JSON object in {content[:80]!r}")
+    try:
+        return json.loads(re.sub(r",\s*([}\]])", r"\1", m.group(0)))
+    except ValueError as e:
+        raise BadAnswer(f"{e}: {content[:80]!r}")
+
+
 def classify(row):
     page = f"Address: {row['url']}\nTitle: {row['title'] or ''}\nVisible text: {row['text'] or ''}"
     req = urllib.request.Request(LLM_URL, method="POST", headers={"Content-Type": "application/json"}, data=json.dumps({
         "model": LLM_MODEL,
         "temperature": 0,
         "max_tokens": 200,
+        "response_format": {"type": "json_schema", "json_schema": SCHEMA},
         "messages": [{"role": "system", "content": PROMPT}, {"role": "user", "content": page}],
     }).encode())
     with urllib.request.urlopen(req, timeout=120) as r:
         content = json.load(r)["choices"][0]["message"]["content"]
-    # Gemma often wraps JSON in a ```json fence: take the outermost {...}.
-    m = re.search(r"\{.*\}", content, re.S)
-    verdict = json.loads(m.group(0)) if m else {}
+    verdict = parse_verdict(content)
     category = verdict.get("category") if verdict.get("category") in CATEGORIES else "mature_other"
     try:
         concern = max(0, min(3, int(verdict.get("concern", 1))))
@@ -125,10 +158,17 @@ def classify(row):
 
 def classify_pending(db, mqtt):
     """Classify a few pending pages. Returns False if the LLM is unreachable."""
-    rows = db.execute("SELECT * FROM events WHERE status='pending' ORDER BY id LIMIT 5").fetchall()
+    # Fewest attempts first, so one stubborn page can't block the queue.
+    rows = db.execute("SELECT * FROM events WHERE status='pending' ORDER BY attempts, id LIMIT 5").fetchall()
     for row in rows:
         try:
             category, concern, summary = classify(row)
+        except BadAnswer as e:
+            db.execute("UPDATE events SET attempts = attempts + 1, status = CASE WHEN attempts >= 2 THEN 'failed' ELSE status END"
+                       " WHERE id=?", (row["id"],))
+            db.commit()
+            print(f"unusable answer for #{row['id']}: {e}", flush=True)
+            continue
         except Exception as e:
             db.execute("UPDATE events SET attempts = attempts + 1, status = CASE WHEN attempts >= 9 THEN 'failed' ELSE status END"
                        " WHERE id=?", (row["id"],))
