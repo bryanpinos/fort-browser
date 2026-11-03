@@ -42,7 +42,14 @@ only browser on the device.
 - `Gate/NetworkGate.swift` — polls `probeURL`; only 2xx = connected. If
   `probeURL` is nil the gate is `.open` (plain filtered browser mode, also what
   an App Store reviewer would see).
-- `Browser/BrowserView.swift` — `UIViewRepresentable` over `WKWebView`.
+- `Browser/TabsModel.swift` — Fort's tabs (max 8, restored on relaunch;
+  `-fort.noTabRestore YES` in UI tests). Builds every tab's WKWebView with the
+  same safety setup; sets the proxy on the shared default data store.
+- `Browser/BrowserModel.swift` — one tab: chrome state + its WKWebView and
+  `BrowserView.TabCoordinator` (the per-tab policy delegate).
+- `Config/FavoritesStore.swift` + `UI/StartPageView.swift` — start-page tiles:
+  parent favorites (`GateConfig.favorites`) plus each kid's (☆, per iPad).
+- `Browser/BrowserView.swift` — container showing the selected tab's `WKWebView`.
   Proxy pin via `WKWebsiteDataStore.proxyConfigurations` (Apple relay, SOCKS5
   or HTTP CONNECT); `allowFailover = false` everywhere.
   Allow/deny enforced in `decidePolicyFor`; denylist also compiled into a
