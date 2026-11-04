@@ -79,7 +79,13 @@ struct ContentView: View {
             tabs.applyProxies(forwarder: forwarder, identities: identities)
             syncLoggerUpload()
         }
-        .onOpenURL { url in receiveCertificate(at: url) }
+        .onOpenURL { url in
+            if TabsModel.isWebLink(url) {
+                tabs.openIncoming(url)
+            } else if url.isFileURL {
+                receiveCertificate(at: url)
+            }
+        }
         .onChange(of: store.deviceName) { _, newValue in
             logger.deviceName = newValue
         }
@@ -176,6 +182,8 @@ struct ContentView: View {
     /// placed in our Inbox (so no key bundle lingers on disk), and routes it
     /// through the parent PIN to Parent settings.
     private func receiveCertificate(at url: URL) {
+        // Never read a remote URL here: that would be a fetch outside the relay.
+        guard url.isFileURL else { return }
         let scoped = url.startAccessingSecurityScopedResource()
         let data = try? Data(contentsOf: url)
         if scoped { url.stopAccessingSecurityScopedResource() }

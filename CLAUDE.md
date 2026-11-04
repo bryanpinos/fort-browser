@@ -113,10 +113,19 @@ argument `-fort.config.json <hex>` (UserDefaults argument domain).
 - "Connected to home" gate check through the relay instead of a direct probe.
 - Kid-friendly message when the Local Network permission was denied.
 
+## Default browser (waiting on Apple)
+App side done: http/https in `CFBundleURLTypes`, `TabsModel.openIncoming`
+(web links only; reuses a start-page tab, else a new tab, else the selected
+one), and a "Default browser" row in Parent settings (iOS 18.2+). Remaining:
+Apple grants `com.apple.developer.web-browser` for `dev.pinos.fort`, enable it
+on the App ID, uncomment the key in `Fort.entitlements`. Apple's requirements
+allow parental-control browsers to restrict navigation. Never add the photo
+library, always-location, HomeKit, background-Bluetooth or Health usage
+keys: browsers with the entitlement are rejected for them.
+
 ## Later / not now
 - Family Controls + ManagedSettings entitlement so Fort can shield Safari
   and other apps itself (needs Apple approval).
-- Default-browser entitlement (`com.apple.developer.web-browser`).
 - Per-kid profiles, time windows, recreation-hours schedule.
 - App Store submission with a reviewer-safe default config (gate open, sample
   denylist). Unlisted distribution is the likely route.

@@ -70,6 +70,29 @@ final class TabsModel {
         save()
     }
 
+    // MARK: - Links from other apps
+
+    /// Only web links are opened as pages; anything else handed to Fort (a
+    /// certificate file, an odd scheme) is not.
+    static func isWebLink(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
+        return !(url.host ?? "").isEmpty
+    }
+
+    /// A link tapped in another app (Fort as the default browser). It loads in
+    /// an ordinary tab, so the relay and the allow/deny policy apply exactly as
+    /// they do for a typed address. Reuses the selected tab when it's on the
+    /// start page; with every tab in use, replaces the selected tab's page.
+    @discardableResult
+    func openIncoming(_ url: URL) -> Bool {
+        guard Self.isWebLink(url) else { return false }
+        if selected.showsStartPage || newTab(url: url) == nil {
+            selected.load(url: url)
+            save()
+        }
+        return true
+    }
+
     // MARK: - Config and network
 
     func apply(config: GateConfig) {

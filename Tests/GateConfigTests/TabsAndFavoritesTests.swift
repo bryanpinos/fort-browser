@@ -79,6 +79,37 @@ final class TabsModelTests: XCTestCase {
         XCTAssertTrue(tabs.selected.showsStartPage)
     }
 
+    func testOnlyWebLinksOpenAsPages() {
+        XCTAssertTrue(TabsModel.isWebLink(URL(string: "https://example.com/a")!))
+        XCTAssertTrue(TabsModel.isWebLink(URL(string: "HTTP://example.com")!))
+        XCTAssertFalse(TabsModel.isWebLink(URL(fileURLWithPath: "/tmp/kid.p12")))
+        XCTAssertFalse(TabsModel.isWebLink(URL(string: "tailscale://")!))
+        XCTAssertFalse(TabsModel.isWebLink(URL(string: "javascript:alert(1)")!))
+        XCTAssertFalse(TabsModel.isWebLink(URL(string: "https:")!))
+        XCTAssertFalse(makeTabs().openIncoming(URL(fileURLWithPath: "/tmp/kid.p12")))
+    }
+
+    func testIncomingLinkReusesStartPageElseOpensATab() {
+        let tabs = makeTabs()
+        let link = URL(string: "https://example.com/")!
+
+        let fresh = tabs.newTab()!
+        XCTAssertTrue(tabs.openIncoming(link))
+        XCTAssertEqual(tabs.tabs.count, 2, "a start-page tab is reused")
+        XCTAssertEqual(tabs.selectedID, fresh.id)
+        XCTAssertFalse(fresh.showsStartPage)
+
+        XCTAssertTrue(tabs.openIncoming(link))
+        XCTAssertEqual(tabs.tabs.count, 3, "a tab showing a page is kept; the link gets its own tab")
+        let newest = tabs.tabs.last!
+        XCTAssertEqual(tabs.selectedID, newest.id)
+        XCTAssertTrue(newest.webView?.navigationDelegate === newest.coordinator, "incoming links get the safety delegate")
+
+        while tabs.canOpenTab { tabs.newTab()?.load(url: link) }
+        XCTAssertTrue(tabs.openIncoming(link))
+        XCTAssertEqual(tabs.tabs.count, TabsModel.maxTabs, "with every tab in use, the selected one is reused")
+    }
+
     func testConfigChangesReachEveryTab() {
         let tabs = makeTabs()
         tabs.newTab()

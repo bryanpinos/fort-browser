@@ -37,6 +37,8 @@ struct ParentSettingsView: View {
     @State private var importURLText = ""
     @State private var importError: String?
     @State private var showLog = false
+    /// nil until checked, or when iOS can't say (older iOS, rate-limited).
+    @State private var isDefaultBrowser: Bool?
 
     /// Set when a .p12 was opened in Fort from another app; consumed on appear.
     @Binding var incomingCertificate: Data?
@@ -132,6 +134,12 @@ struct ParentSettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("Default browser", value: isDefaultBrowser.map { $0 ? "Fort" : "Not Fort" } ?? "Unknown")
+                } footer: {
+                    Text("With Fort as the default, links tapped in other apps open here, filtered. Choose it in Settings › Apps › Default Apps › Browser App.")
+                }
+
+                Section {
                     TextField("Device name (e.g. Ava's iPad)", text: $deviceNameText)
                         .autocorrectionDisabled()
                 } header: { Text("This device") } footer: {
@@ -195,6 +203,7 @@ struct ParentSettingsView: View {
             }
             .onAppear {
                 loadDraft()
+                isDefaultBrowser = Self.checkDefaultBrowser()
                 if let data = incomingCertificate {
                     incomingCertificate = nil
                     certPassword = ""
@@ -257,6 +266,12 @@ struct ParentSettingsView: View {
         case .disconnected(let reason): return "Not connected: \(reason)"
         case .needsLocalNetwork: return "Blocked: allow Local Network for Fort in Settings"
         }
+    }
+
+    /// iOS rate-limits this check, so it's only made when settings open.
+    private static func checkDefaultBrowser() -> Bool? {
+        guard #available(iOS 18.2, *) else { return nil }
+        return try? UIApplication.shared.isDefault(.webBrowser)
     }
 
     private func loadDraft() {
