@@ -16,6 +16,8 @@
 #   4. any other CONNECT            -> 403
 #   5. GET /fort/health + token     -> 200 (app's gate check); else 404
 #   6. POST /fort/ingest + token    -> fort-ingest (page review queue)
+#   7. GET /fort/blocked + token    -> fort-ingest: does the home filter block
+#      this name? Fort asks after a failed page load, to show its block page.
 # The authority deny-list can't see what a public name resolves to, so a name
 # pointing at a private IP gets through. Before exposing this to the internet,
 # also isolate the relay's egress at the network layer (own VLAN + firewall).
@@ -150,6 +152,20 @@ static_resources:
                   - name: ":method"
                     string_match: {exact: "POST"}
                 route: {cluster: fort_ingest, timeout: 15s}
+                request_headers_to_remove: [x-fort-token]
+                request_headers_to_add:
+                - header: {key: x-fort-device, value: "%DOWNSTREAM_PEER_URI_SAN%"}
+                  append_action: OVERWRITE_IF_EXISTS_OR_ADD
+              # Why did that page fail? Fort can't see the CONNECT's response
+              # through Apple's relay API, so it asks. Same checks as ingest.
+              - match:
+                  path: "/fort/blocked"
+                  headers:
+                  - name: x-fort-token
+                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                  - name: ":method"
+                    string_match: {exact: "GET"}
+                route: {cluster: fort_ingest, timeout: 5s}
                 request_headers_to_remove: [x-fort-token]
                 request_headers_to_add:
                 - header: {key: x-fort-device, value: "%DOWNSTREAM_PEER_URI_SAN%"}

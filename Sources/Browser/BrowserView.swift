@@ -73,6 +73,10 @@ struct BrowserView: UIViewRepresentable {
         var config: GateConfig
         /// Whether Fort's home check currently passes (relay mode).
         var homeReachable: () -> Bool = { false }
+        /// Asks home whether its content filter blocks a host.
+        var isBlockedAtHome: (String) async -> Bool = { _ in false }
+        /// Bumped per navigation, so a slow answer can't touch a newer page.
+        private var navigationAttempt = 0
         /// Opens a link in a new tab; returns false at the tab limit.
         var openInNewTab: (URL) -> Bool = { _ in false }
         /// Called when the tab's URL changes (to save open tabs).
@@ -240,6 +244,10 @@ struct BrowserView: UIViewRepresentable {
             model.isLoading = false
         }
 
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            navigationAttempt += 1
+        }
+
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             forwarderTrace("page load failed: \((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)")
             model.isLoading = false
@@ -248,11 +256,24 @@ struct BrowserView: UIViewRepresentable {
             let failure = Self.loadFailure(code: nsError.code, relay: relay, homeReachable: homeReachable())
             let failingURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
             if failure == .blockedAtHome {
-                if let failingURL { logger.record(url: failingURL, allowed: false, reason: "blocked at home") }
-                model.block = .init(reason: .blockedAtHome, host: failingURL?.host ?? "")
+                showBlockedAtHome(failingURL)
+            } else if failure == .siteFailed, let host = failingURL?.host {
+                // The filter's sinkhole can't answer from the Fort VLAN, so a
+                // blocked site just fails to connect. Ask home which this was.
+                let attempt = navigationAttempt
+                Task { @MainActor in
+                    let blocked = await isBlockedAtHome(host)
+                    guard attempt == navigationAttempt else { return }
+                    if blocked { showBlockedAtHome(failingURL) } else { model.blockedMessage = failure?.message }
+                }
             } else if let message = failure?.message {
                 model.blockedMessage = message
             }
+        }
+
+        private func showBlockedAtHome(_ url: URL?) {
+            if let url { logger.record(url: url, allowed: false, reason: "blocked at home") }
+            model.block = .init(reason: .blockedAtHome, host: url?.host ?? "")
         }
 
         enum LoadFailure: Equatable {

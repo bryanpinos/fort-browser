@@ -1,4 +1,5 @@
-"""Fort ingest: receives page/navigation events from Fort via the relay.
+"""Fort ingest: receives page/navigation events from Fort via the relay, and
+answers whether the home filter blocks a name (GET /fort/blocked?host=...).
 
 Runs in the relay container's network namespace (compose network_mode
 "service:relay") and listens on 127.0.0.1 only, so Envoy is the only thing
@@ -11,10 +12,13 @@ Standard library only.
 """
 import json
 import os
+import re
+import socket
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 DB = os.environ.get("REVIEW_DB", "/data/review.db")
 PORT = int(os.environ.get("INGEST_PORT", "8081"))
@@ -23,6 +27,9 @@ MAX_BODY = 512 * 1024
 MAX_EVENTS = 200
 LIMITS = {"url": 2048, "title": 300, "text": 4000, "reason": 100}
 KINDS = {"nav", "page"}
+# What the UCG's content filter answers for blocked names (ads get 0.0.0.0).
+SINKHOLES = {"203.0.113.250", "2001:db8:1000::fa", "0.0.0.0", "::"}
+HOSTNAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -60,6 +67,15 @@ def clean(value, key):
     if value is None:
         return None
     return str(value)[: LIMITS[key]]
+
+
+def blocked_at_home(host):
+    """True if this namespace's DNS (the UCG, as Fort traffic sees it) sinkholes host."""
+    try:
+        addresses = {a[4][0] for a in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
+    except OSError:
+        return False
+    return bool(addresses & SINKHOLES)
 
 
 def host_of(url):
@@ -128,7 +144,18 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(204)
 
     def do_GET(self):
-        self.reply(404)
+        parts = urlsplit(self.path)
+        host = parse_qs(parts.query).get("host", [""])[0]
+        if parts.path != "/fort/blocked" or not self.headers.get("x-fort-device", "").startswith(DEVICE_PREFIX):
+            return self.reply(404)
+        if not HOSTNAME.match(host):
+            return self.reply(400)
+        body = json.dumps({"blocked": blocked_at_home(host)}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def main():

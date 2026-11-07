@@ -116,6 +116,34 @@ final class NetworkGate {
         }
     }
 
+    // MARK: - Why a page failed
+
+    static func relayBlockedURL(for proxy: GateConfig.ProxyConfig, host: String) -> URL? {
+        guard var c = relayHealthURL(for: proxy).flatMap({ URLComponents(url: $0, resolvingAgainstBaseURL: false) }) else { return nil }
+        c.path = "/fort/blocked"
+        c.queryItems = [URLQueryItem(name: "host", value: host)]
+        return c.url
+    }
+
+    /// Asks home whether its content filter blocks `host`. Fort can't see the
+    /// relay's answer to a CONNECT, so this is how a failed page load tells
+    /// "blocked" from "broken". Any doubt is false: the page still didn't load.
+    func isBlockedAtHome(host: String) async -> Bool {
+        guard let proxy = config.proxy, proxy.kind == .relay,
+              let url = Self.relayBlockedURL(for: proxy, host: host) else { return false }
+        var request = URLRequest(url: url)
+        if let token = proxy.authToken { request.setValue(token, forHTTPHeaderField: "x-fort-token") }
+        let delegate = ClientCertificateDelegate(identity: identities?.identity())
+        let session = URLSession(configuration: Self.probeConfiguration(), delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let answer = try? JSONDecoder().decode(BlockedAnswer.self, from: data) else { return false }
+        return answer.blocked
+    }
+
+    private struct BlockedAnswer: Decodable { let blocked: Bool }
+
     // MARK: - Relay health probe
 
     static func relayHealthURL(for proxy: GateConfig.ProxyConfig) -> URL? {

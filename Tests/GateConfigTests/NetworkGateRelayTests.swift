@@ -58,4 +58,16 @@ final class NetworkGateRelayTests: XCTestCase {
         try await waitForSettled(gate)
         XCTAssertEqual(gate.state, .connected)
     }
+
+    func testBlockedCheckAsksTheRelayAboutTheHost() {
+        let proxy = GateConfig.ProxyConfig(kind: .relay, host: "relay.example.com", port: 8443, authToken: "t")
+        XCTAssertEqual(NetworkGate.relayBlockedURL(for: proxy, host: "www.example.com")?.absoluteString,
+                       "https://relay.example.com:8443/fort/blocked?host=www.example.com")
+    }
+
+    func testBlockedCheckWithoutARelayIsNo() async {
+        let gate = NetworkGate(config: GateConfig())
+        let blocked = await gate.isBlockedAtHome(host: "www.example.com")
+        XCTAssertFalse(blocked)
+    }
 }

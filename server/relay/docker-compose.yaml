@@ -83,6 +83,24 @@ services:
     mem_limit: 64m
     pids_limit: 32
 
+  # Makes connecting to the content filter's sinkhole fail at once. The gateway
+  # silently drops it from this VLAN, so a blocked name would otherwise wait out
+  # the 5 s connect timeout. Only speed depends on this; re-applied because the
+  # route dies when the relay is recreated. Holds NET_ADMIN so the relay needn't.
+  sinkhole-route:
+    image: alpine:3
+    container_name: fort-relay-sinkhole-route
+    restart: unless-stopped
+    network_mode: "service:relay"
+    depends_on: [relay]
+    command: ["sh", "-c", "while true; do ip route replace unreachable 203.0.113.250/32; sleep 60; done"]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 16m
+    pids_limit: 16
+
   # Page review. ingest shares the relay's network namespace (loopback only,
   # reachable just from Envoy); worker sits on an ordinary network to reach
   # LM Studio and MQTT. They share nothing but ./review (the SQLite queue).

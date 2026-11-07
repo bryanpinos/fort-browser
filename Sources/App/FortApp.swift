@@ -33,7 +33,8 @@ struct FortApp: App {
                     Color.clear.onAppear {
                         let gate = gate
                         tabs = TabsModel(config: store.config, logger: logger,
-                                         homeReachable: { gate.state == .connected })
+                                         homeReachable: { gate.state == .connected },
+                                         isBlockedAtHome: { await gate.isBlockedAtHome(host: $0) })
                     }
                 }
             }

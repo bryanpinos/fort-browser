@@ -22,11 +22,14 @@ final class TabsModel {
     @ObservationIgnored private var config: GateConfig
     @ObservationIgnored private let logger: ActivityLogger
     @ObservationIgnored private let homeReachable: () -> Bool
+    @ObservationIgnored private let isBlockedAtHome: (String) async -> Bool
 
-    init(config: GateConfig, logger: ActivityLogger, homeReachable: @escaping () -> Bool) {
+    init(config: GateConfig, logger: ActivityLogger, homeReachable: @escaping () -> Bool,
+         isBlockedAtHome: @escaping (String) async -> Bool = { _ in false }) {
         self.config = config
         self.logger = logger
         self.homeReachable = homeReachable
+        self.isBlockedAtHome = isBlockedAtHome
         restore()
     }
 
@@ -141,6 +144,7 @@ final class TabsModel {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         let coordinator = BrowserView.TabCoordinator(model: tab, config: config, logger: logger)
         coordinator.homeReachable = homeReachable
+        coordinator.isBlockedAtHome = isBlockedAtHome
         coordinator.openInNewTab = { [weak self] url in
             guard let self else { return false }
             return self.newTab(url: url) != nil
