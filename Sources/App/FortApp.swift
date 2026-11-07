@@ -7,7 +7,9 @@ struct FortApp: App {
     @State private var logger: ActivityLogger
     @State private var forwarder = RelayForwarder()
     @State private var identities: ClientIdentityStore
-    @State private var tabs: TabsModel
+    /// Built once the scene is up, not in init: a WKWebView created before
+    /// UIApplication is running crashes in UIKit's touch handling on the first scroll.
+    @State private var tabs: TabsModel?
     @State private var favorites = FavoritesStore()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -20,20 +22,26 @@ struct FortApp: App {
         let logger = ActivityLogger(endpoint: store.config.logEndpoint)
         logger.deviceName = store.deviceName
         _logger = State(initialValue: logger)
-        let gate = _gate.wrappedValue
-        _tabs = State(initialValue: TabsModel(config: store.config, logger: logger,
-                                              homeReachable: { gate.state == .connected }))
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if let tabs {
+                    ContentView().environment(tabs)
+                } else {
+                    Color.clear.onAppear {
+                        let gate = gate
+                        tabs = TabsModel(config: store.config, logger: logger,
+                                         homeReachable: { gate.state == .connected })
+                    }
+                }
+            }
                 .environment(store)
                 .environment(gate)
                 .environment(logger)
                 .environment(forwarder)
                 .environment(identities)
-                .environment(tabs)
                 .environment(favorites)
                 .onAppear {
                     forwarder.apply(store.config, identities: identities)

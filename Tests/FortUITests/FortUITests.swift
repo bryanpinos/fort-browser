@@ -192,6 +192,18 @@ final class FortUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Clear all website data…"].exists)
     }
 
+    /// A WKWebView created before UIApplication is running aborts in UIKit's
+    /// touch handling on the first scroll, so tabs must be built after launch.
+    func testScrollingAPageDoesNotCrash() {
+        let app = launch(["homeURL": "https://en.wikipedia.org/wiki/Cat"])
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20))
+        for _ in 0..<3 {
+            web.swipeUp()
+            XCTAssertEqual(app.state, .runningForeground)
+        }
+    }
+
     func testBlockPageButtonsReturnToStartPage() {
         let app = launch(["denylist": ["example.com"], "homeURL": "https://example.com"])
         XCTAssertTrue(app.staticTexts[blockedText].waitForExistence(timeout: 5))
