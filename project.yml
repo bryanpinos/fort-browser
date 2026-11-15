@@ -43,7 +43,7 @@ targets:
       properties:
         CFBundleDisplayName: Fort
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         # Only standard HTTPS/TLS: exempt, so uploads skip the export question.
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}

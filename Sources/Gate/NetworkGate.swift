@@ -27,6 +27,10 @@ final class NetworkGate {
 
     private var task: Task<Void, Never>?
     private var config: GateConfig
+    /// Receives the home config (`/fort/config`) after a successful fetch.
+    @ObservationIgnored var homeConfigHandler: ((Data) -> Void)?
+    @ObservationIgnored private var lastHomeFetch: Date?
+    static let homeConfigInterval: TimeInterval = 15 * 60
     @ObservationIgnored private let identities: ClientIdentityStore?
 
     init(config: GateConfig, identities: ClientIdentityStore? = nil) {
@@ -116,6 +120,24 @@ final class NetworkGate {
         }
     }
 
+    // MARK: - Home config
+
+    static func relayConfigURL(for proxy: GateConfig.ProxyConfig) -> URL? {
+        relayHealthURL(for: proxy).map { $0.deletingLastPathComponent().appendingPathComponent("config") }
+    }
+
+    /// Fetches the home config over the same mutual-TLS session as the health
+    /// check. Only a 200 with a body is handed on; anything else changes nothing.
+    @MainActor
+    private func fetchHomeConfig(_ proxy: GateConfig.ProxyConfig, session: URLSession) async {
+        guard let url = Self.relayConfigURL(for: proxy) else { return }
+        var request = URLRequest(url: url)
+        if let token = proxy.authToken { request.setValue(token, forHTTPHeaderField: "x-fort-token") }
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return }
+        homeConfigHandler?(data)
+    }
+
     // MARK: - Why a page failed
 
     static func relayBlockedURL(for proxy: GateConfig.ProxyConfig, host: String) -> URL? {
@@ -170,7 +192,12 @@ final class NetworkGate {
             let (_, response) = try await session.data(for: request)
             lastChecked = Date()
             switch (response as? HTTPURLResponse)?.statusCode {
-            case 200: state = .connected
+            case 200:
+                state = .connected
+                if lastHomeFetch.map({ Date().timeIntervalSince($0) > Self.homeConfigInterval }) ?? true {
+                    lastHomeFetch = Date()
+                    await fetchHomeConfig(proxy, session: session)
+                }
             case 404: state = .disconnected(reason: "Home isn't accepting this iPad (check the relay token)")
             default: state = .disconnected(reason: "Home answered unexpectedly")
             }

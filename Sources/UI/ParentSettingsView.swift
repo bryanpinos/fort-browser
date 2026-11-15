@@ -50,6 +50,12 @@ struct ParentSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !store.isManaged && !store.managedFromHome.isEmpty {
+                    Section {
+                        Label("Some settings are managed from home: \(Self.homeLabels(store.managedFromHome)). Changes to them here won't stick.",
+                              systemImage: "house.fill")
+                    }
+                }
                 if store.isManaged {
                     Section {
                         Label("Configuration is managed by your MDM and can't be edited here.", systemImage: "lock.shield")
@@ -266,6 +272,15 @@ struct ParentSettingsView: View {
         case .disconnected(let reason): return "Not connected: \(reason)"
         case .needsLocalNetwork: return "Blocked: allow Local Network for Fort in Settings"
         }
+    }
+
+    /// Plain names for the fields a home config can manage.
+    static func homeLabels(_ keys: Set<String>) -> String {
+        let names = ["favorites": "favorites", "denylist": "blocked sites", "allowlist": "allowed sites",
+                     "enforceSafeSearch": "safe search", "homeURL": "home page", "reviewPages": "page review",
+                     "parentPINHash": "parent PIN", "logEndpoint": "log endpoint", "probeURL": "probe URL",
+                     "probeIntervalSeconds": "check interval"]
+        return keys.map { names[$0] ?? $0 }.sorted().joined(separator: ", ")
     }
 
     /// iOS rate-limits this check, so it's only made when settings open.

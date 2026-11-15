@@ -21,7 +21,9 @@ struct FortApp: App {
         _store = State(initialValue: store)
         let identities = ClientIdentityStore()
         _identities = State(initialValue: identities)
-        _gate = State(initialValue: NetworkGate(config: store.config, identities: identities))
+        let gate = NetworkGate(config: store.config, identities: identities)
+        gate.homeConfigHandler = { store.applyHome($0) }
+        _gate = State(initialValue: gate)
         let logger = ActivityLogger(endpoint: store.config.logEndpoint)
         logger.deviceName = store.deviceName
         _logger = State(initialValue: logger)
