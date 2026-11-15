@@ -63,7 +63,22 @@ struct GateConfig: Codable, Equatable {
         var authToken: String? = nil
     }
 
-    static let `default` = GateConfig()
+    /// A fresh install, before a parent sets anything up (also what App Review
+    /// sees): a starter block list and a few kid-friendly favorites. Saved or
+    /// managed settings replace it entirely.
+    static let `default`: GateConfig = {
+        var config = GateConfig()
+        config.denylist = ["pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "redtube.com",
+                           "youporn.com", "onlyfans.com", "chaturbate.com", "stake.com", "draftkings.com",
+                           "fanduel.com", "bet365.com"]
+        config.favorites = [
+            Favorite(name: "PBS Kids", url: URL(string: "https://pbskids.org")!),
+            Favorite(name: "NASA Space Place", url: URL(string: "https://spaceplace.nasa.gov")!),
+            Favorite(name: "Nat Geo Kids", url: URL(string: "https://kids.nationalgeographic.com")!),
+            Favorite(name: "Wikipedia", url: URL(string: "https://www.wikipedia.org")!),
+        ]
+        return config
+    }()
 }
 
 extension GateConfig {

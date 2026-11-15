@@ -114,4 +114,11 @@ final class SafeSearchTests: XCTestCase {
         let out = SafeSearch.enforced(URL(string: "https://WWW.GOOGLE.COM/search?q=cats")!)
         XCTAssertEqual(query(out, "safe"), "active")
     }
+
+    func testFreshInstallHasAStarterBlockList() {
+        XCTAssertFalse(GateConfig.default.allows(host: "www.pornhub.com"))
+        XCTAssertTrue(GateConfig.default.allows(host: "pbskids.org"))
+        XCTAssertFalse(GateConfig.default.favorites?.isEmpty ?? true)
+        XCTAssertTrue(GateConfig().allows(host: "www.pornhub.com"), "only a fresh install gets the starter list")
+    }
 }
