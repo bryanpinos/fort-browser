@@ -41,9 +41,8 @@ SYSTEM_PROMPT = ("You are a friendly helper for kids aged 9 to 13. Use simple, k
                  "sexual content, how to hurt anyone, drugs, alcohol, or breaking rules, and don't ask for personal "
                  "information. Never ask a child to keep a secret from a parent. For big worries, encourage talking "
                  "to a parent or another trusted adult.")
-DECLINE_INSTRUCTION = ("A child asked for something that isn't right for this chat. In one or two friendly sentences, "
-                       "say you can't help with that one and suggest asking a parent or trusted adult. Then offer to "
-                       "help with something else. Don't mention what they asked about.")
+DECLINE_INSTRUCTION = ("A child asked for something that isn't right for this chat. Reply with exactly this, "
+                       "and nothing else: That's not something I can help with. Want to ask me about something else?")
 # Worded for not knowing what happened: blocked messages never reach the model, and
 # the person who should be told may be the person causing the harm.
 CARE_INSTRUCTION = ("A child may be going through something hard or may not be safe. Reply with exactly this, and nothing "
