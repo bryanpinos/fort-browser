@@ -9,6 +9,9 @@
 #
 # Route order matters:
 #   1. wrong/missing token          -> 407
+#   1b. kids-chat.example.com:443     -> Caddy (192.168.1.5) for Fort Chat, the
+#       kids' Open WebUI. The only internal name allowed; Caddy refuses every
+#       other host from the Fort VLAN, since a tunnel's inner host is opaque here.
 #   2. private / internal targets   -> 403 (a leaked token must not reach the LAN)
 #      and ANY bare IP address: names only, so DNS-based filtering (Kids
 #      policy, SafeSearch, ad blocking) can't be bypassed by typing an IP
@@ -118,6 +121,14 @@ static_resources:
                   connect_matcher: {}
                   headers:
                   - name: ":authority"
+                    string_match: {exact: "kids-chat.example.com:443"}
+                route:
+                  cluster: kids_chat
+                  upgrade_configs: [{upgrade_type: CONNECT, connect_config: {}}]
+              - match:
+                  connect_matcher: {}
+                  headers:
+                  - name: ":authority"
                     string_match:
                       safe_regex:
                         regex: "^(\\[.*\\]|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|(0|10|127)\\.[0-9.]+|192\\.168\\.[0-9.]+|172\\.(1[6-9]|2[0-9]|3[01])\\.[0-9.]+|169\\.254\\.[0-9.]+|100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9.]+|[^.:]+|(.*\\.)?(pinos\\.dev|local|lan|internal|home\\.arpa|localhost|ts\\.net)\\.?):[0-9]+$"
@@ -181,6 +192,16 @@ static_resources:
             typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router}
 
   clusters:
+  # Fort Chat via Caddy. Fixed address: the name has no public DNS record, and a
+  # fixed target can't be redirected by DNS.
+  - name: kids_chat
+    connect_timeout: 5s
+    type: STATIC
+    load_assignment:
+      cluster_name: kids_chat
+      endpoints:
+      - lb_endpoints:
+        - endpoint: {address: {socket_address: {address: 192.168.1.5, port_value: 443}}}
   - name: fort_ingest
     connect_timeout: 2s
     type: STATIC
