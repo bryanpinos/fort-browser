@@ -51,11 +51,29 @@ check("a flagged message doesn't colour later turns","friendly helper" in s, s[:
 r=chat([{"role":"user","content":"I don't want to be alive anymore."}]); m=mock_last(); s=json.dumps(m["messages"])
 check("danger message gets the care prompt","grown-up you trust" in s, s[:70])
 
-r=chat([{"role":"user","content":[{"type":"text","text":"Why is the sky blue?"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]); m=mock_last(); s=json.dumps(m["messages"])
-check("images dropped","image_url" not in s)
+r=chat([{"role":"user","content":[{"type":"text","text":"Why is the sky blue? broken photo"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]); m=mock_last(); s=json.dumps(m["messages"])
+check("broken photo never reaches the model","AAAA" not in s and ("broken photo" not in s or "(message removed)" in s), str(r)[:100])
 
 r=chat([{"role":"user","content":"Why is the sky blue? "+"x "*2500}]); m=mock_last(); s=json.dumps(m["messages"])
 check("oversized message refused","x x x" not in s and "isn't right" in s)
+
+import base64
+IMG="data:image/jpeg;base64,"+base64.b64encode(open("/tmp/imgtest/rock.jpg","rb").read()).decode()
+def photo_msg(text, urls): return [{"role":"user","content":[{"type":"text","text":text}]+[{"type":"image_url","image_url":{"url":x}} for x in urls]}]
+r=chat(photo_msg("Why is the sky blue? What is in this picture?",[IMG])); m=mock_last(); s=json.dumps(m["messages"])
+check("ordinary photo reaches the model as a photo", "image_url" in s and "data:image/jpeg" in s and "(message removed)" not in s)
+r=chat(photo_msg("Why is the sky blue?",["https://example.com/x.jpg"])); m=mock_last(); s=json.dumps(m["messages"])
+check("linked (not embedded) image refused", "example.com/x.jpg" not in s and "(message removed)" in s)
+r=chat(photo_msg("Why is the sky blue?",[IMG]*5)); m=mock_last(); s=json.dumps(m["messages"])
+check("more than 4 photos refused", "data:image" not in s and "(message removed)" in s)
+valves(image_query="Does this image contain any color?")
+r=chat(photo_msg("Why is the sky blue? Look at this!",[IMG])); m=mock_last(); s=json.dumps(m["messages"])
+check("flagged photo blocks the message", "data:image" not in s and "(message removed)" in s)
+valves()
+valves(shield_model="no-such-model")
+r=chat(photo_msg("Why is the sky blue? photo check down",[IMG+"AA"]))
+check("photo check down: refused", r.get("error") or "safety check" in json.dumps(r), str(r)[:120])
+valves()
 
 valves(qwen_model="no-such-model")
 r=chat([{"role":"user","content":"What's a new question about the moon?"}])

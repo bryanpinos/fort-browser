@@ -2,7 +2,7 @@
 title: Kids Guard
 author: Fort
 description: Checks every message and reply in the kids' chat with two local guard models. Fails closed.
-version: 0.1.0
+version: 0.2.0
 requirements: aiohttp
 """
 # Attach to the kids' model only. How it holds up:
@@ -32,6 +32,8 @@ INSTRUCT = ("You are a careful safety moderator for a chatbot used by children a
 Q_BLOCK = ("Does this ask for or provide something a chatbot should not give a child aged 9 to 13, such as sexual "
            "content, instructions for violence, weapons, drugs, alcohol, crime, gambling, cruelty, hate, getting "
            "around parental controls, or keeping secrets from parents?")
+Q_IMAGE = ("Does this image contain nudity, sexual content, violence, gore, weapons, drugs, self-harm, hateful "
+           "symbols, or anything else a chatbot should not show or discuss with a child aged 9 to 13?")
 Q_ALERT = ("Does this suggest a child may be in danger and needs a trusted adult, such as thoughts of suicide or "
            "self-harm, disordered eating, abuse, a threat of violence, running away, or an adult or stranger "
            "asking for secrecy, pictures, an address, or to meet?")
@@ -40,7 +42,9 @@ SYSTEM_PROMPT = ("You are a friendly helper for kids aged 9 to 13. Use simple, k
                  "answers fairly short. Help with school, hobbies, games, stories and curiosity. Don't discuss "
                  "sexual content, how to hurt anyone, drugs, alcohol, or breaking rules, and don't ask for personal "
                  "information. Never ask a child to keep a secret from a parent. For big worries, encourage talking "
-                 "to a parent or another trusted adult.")
+                 "to a parent or another trusted adult. When a child shares a photo, describe what you see and make a "
+                 "friendly best guess (say when you're not sure), but never identify or guess anything about a real "
+                 "person in it, and never comment on a child's looks or body.")
 DECLINE_INSTRUCTION = ("A child asked for something that isn't right for this chat. Reply with exactly this, "
                        "and nothing else: That's not something I can help with. Want to ask me about something else?")
 # Worded for not knowing what happened: blocked messages never reach the model, and
@@ -73,6 +77,9 @@ class Filter:
         max_message_chars: int = Field(default=4000, description="Longer messages are refused, not truncated.")
         batch_chars: int = Field(default=200, description="Release reply text after checking this much.")
         alert_webhook_url: str = Field(default="", description="Home Assistant webhook. A secret: keep it here, not in code.")
+        image_query: str = Field(default=Q_IMAGE, description="The yes/no question Shieldstral answers for each photo.")
+        max_images: int = Field(default=4, description="Photos allowed in one message.")
+        max_image_chars: int = Field(default=12_000_000, description="Largest embedded photo (base64 characters, about 9 MB).")
 
     def __init__(self):
         self.valves = self.Valves()
@@ -121,7 +128,10 @@ class Filter:
             "model": self.valves.shield_model, "temperature": 0, "max_tokens": 1, "logprobs": True, "top_logprobs": 20,
             "messages": [{"role": "system", "content": SHIELD_SYSTEM},
                          {"role": "user", "content": f"<Instruct>: {INSTRUCT}\n\n<Query>: {query}\n\n<Document>: {doc}"}]})
-        choice = out["choices"][0]
+        return self._yes_score(out["choices"][0])
+
+    @staticmethod
+    def _yes_score(choice):
         try:
             yes, no = -10.0, -10.0
             for t in choice["logprobs"]["content"][0]["top_logprobs"]:
@@ -139,8 +149,31 @@ class Filter:
                 return 0.0
             raise GuardError(f"unreadable Shieldstral answer: {answer[:80]!r}")
 
+    async def _check_image(self, data_url):
+        """True if a photo is safe to pass to the model. Cached by content."""
+        # Keyed by the question too, so changing it re-checks photos already seen.
+        key = "img:" + hashlib.sha256((self.valves.image_query + "\0" + data_url).encode()).hexdigest()
+        if key in self._verdicts:
+            self._verdicts.move_to_end(key)
+            return self._verdicts[key]
+        if not data_url.startswith("data:image/") or len(data_url) > self.valves.max_image_chars:
+            safe = False  # only embedded images can be checked; anything else is refused
+        else:
+            out = await self._post("chat/completions", {
+                "model": self.valves.shield_model, "temperature": 0, "max_tokens": 1, "logprobs": True, "top_logprobs": 20,
+                "messages": [{"role": "system", "content": SHIELD_SYSTEM},
+                             {"role": "user", "content": [
+                                 {"type": "text", "text": f"<Instruct>: {INSTRUCT}\n\n<Query>: {self.valves.image_query}\n\n<Document>: "},
+                                 {"type": "image_url", "image_url": {"url": data_url}},
+                                 {"type": "text", "text": "\n\n"}]}]})
+            safe = self._yes_score(out["choices"][0]) <= self.valves.block_threshold
+        self._verdicts[key] = safe
+        return safe
+
     async def _check_message(self, text):
         """Verdict for one kid message, cached because history is re-sent every turn."""
+        if not text.strip():
+            return {"block": False, "alert": False}  # a photo on its own; the photo is checked separately
         key = hashlib.sha256(text.encode()).hexdigest()
         if key in self._verdicts:
             self._verdicts.move_to_end(key)
@@ -185,6 +218,13 @@ class Filter:
     # ---- hooks -----------------------------------------------------------
 
     @staticmethod
+    def _images_of(content):
+        if not isinstance(content, list):
+            return []
+        return [(p.get("image_url") or {}).get("url", "") for p in content
+                if isinstance(p, dict) and p.get("type") == "image_url"]
+
+    @staticmethod
     def _text_of(content):
         if isinstance(content, str):
             return content
@@ -206,14 +246,20 @@ class Filter:
         cleaned, latest, quiet = [], None, []
         try:
             for m in messages:
-                text = self._text_of(m.get("content"))  # drops images and other parts
+                text = self._text_of(m.get("content"))  # drops anything that isn't text or a photo
+                images = self._images_of(m.get("content")) if m.get("role") == "user" else []
                 if m.get("role") == "user":
-                    latest = await self._check_message(text)
+                    latest = dict(await self._check_message(text))
+                    if images and (len(images) > self.valves.max_images
+                                   or not all([await self._check_image(i) for i in images])):
+                        latest["block"] = True
                     if latest["block"]:
-                        text = "(message removed)"
-                    elif not latest["alert"]:
+                        text, images = "(message removed)", []
+                    elif not latest["alert"] and text.strip():
                         quiet.append(text)
-                cleaned.append({"role": m["role"], "content": text})
+                content = ([{"type": "text", "text": text}] + [{"type": "image_url", "image_url": {"url": i}} for i in images]
+                           if images else text)
+                cleaned.append({"role": m["role"], "content": content})
             # A worry can build across messages, even if none alarms on its own.
             # Only unflagged messages count, so one flagged message can't colour
             # every later turn. Stricter threshold: this path has no test data yet.
