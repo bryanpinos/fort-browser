@@ -130,7 +130,7 @@ keys: browsers with the entitlement are rejected for them.
 2. **DONE 2026-11-15. Web search in Fort Chat:** kids-only SearXNG `fort-kids-search` at
    192.168.40.11 on the Fort VLAN (Kids content filter + SafeSearch), queried by the guard
    itself, never by Open WebUI; every result is checked and unsafe ones dropped.
-3. **Home control plane:** relay route `/fort/config` (mTLS + token) serving `fort.json`
+3. **DONE 2026-11-15 (build 3, 7b3d0af). Home control plane:** relay route `/fort/config` (mTLS + token) serving `fort.json`
    plus optional `devices/<device-id>.json`; Fort fetches on connect and every ~15 min, keeps
    the last good config on any error, and shows those fields as "managed from home". Open
    question: whether it may rotate the relay token (needs old + new accepted during a change).
