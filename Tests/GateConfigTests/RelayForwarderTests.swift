@@ -117,6 +117,20 @@ final class RelayForwarderLoopbackTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), RelayForwarder.upstreamTimeout + 3)
     }
 
+    func testRestartAfterSuspensionServesOnAFreshListener() async throws {
+        let before = try XCTUnwrap(forwarder.port)
+        await MainActor.run { forwarder.restartAfterSuspension() }
+        for _ in 0..<50 where forwarder.port == nil || forwarder.port == before { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertNotNil(forwarder.port, "forwarder didn't come back after the restart")
+        let line = try await statusLine(for: "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
+        XCTAssertTrue(line.contains("407"), "the new listener must still enforce credentials: \(line)")
+    }
+
+    func testRestartWithoutARelayDoesNothing() async throws {
+        await MainActor.run { forwarder.stop(); forwarder.restartAfterSuspension() }
+        XCTAssertNil(forwarder.port)
+    }
+
     func testStopClosesThePort() async throws {
         await MainActor.run { forwarder.stop() }
         XCTAssertNil(forwarder.port)

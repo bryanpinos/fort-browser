@@ -56,6 +56,9 @@ final class RelayForwarder {
     func start(relay: ProxyConfiguration) {
         stop()
         self.relay = relay
+        // Tunnels from before a restart close on their own; don't let them
+        // count against the new listener's limit.
+        queue.async { self.activeTunnels = 0 }
         let ctx = NWParameters.PrivacyContext(description: "Fort relay")
         ctx.proxyConfigurations = [relay]
         context = ctx
@@ -69,6 +72,16 @@ final class RelayForwarder {
         listener = nil
         old?.cancel()
         setPort(nil)
+    }
+
+    /// After the app was in the background, rebuild everything: iOS can leave a
+    /// suspended app's loopback listener looking alive with a dead socket, and
+    /// the relay connection stale, so the only reliable fix is fresh ones (a new
+    /// port and a new relay connection). WebKit fails closed while it restarts.
+    func restartAfterSuspension() {
+        guard let relay else { return }
+        forwarderTrace("restarting after suspension")
+        start(relay: relay)
     }
 
     /// Re-creates the listener if iOS tore it down while we were suspended.

@@ -12,6 +12,9 @@ struct FortApp: App {
     @State private var tabs: TabsModel?
     @State private var favorites = FavoritesStore()
     @Environment(\.scenePhase) private var scenePhase
+    /// Set when the app really went to the background (not just a brief
+    /// inactive moment like Control Center), so the forwarder is rebuilt.
+    @State private var wasInBackground = false
 
     init() {
         let store = ConfigStore()
@@ -51,9 +54,15 @@ struct FortApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
-                        forwarder.ensureListening()
+                        if wasInBackground {
+                            wasInBackground = false
+                            forwarder.restartAfterSuspension()
+                        } else {
+                            forwarder.ensureListening()
+                        }
                         gate.start()
                     case .background:
+                        wasInBackground = true
                         gate.stop()
                         Task { await logger.flush() }
                     default: break
