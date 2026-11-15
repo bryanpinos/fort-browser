@@ -89,6 +89,17 @@ final class TabsModelTests: XCTestCase {
         XCTAssertFalse(makeTabs().openIncoming(URL(fileURLWithPath: "/tmp/kid.p12")))
     }
 
+    func testFortLinksOpenOnlyWebAddresses() {
+        func web(_ s: String) -> String? { TabsModel.webLink(fromFortLink: URL(string: s)!)?.absoluteString }
+        XCTAssertEqual(web("fort://open?url=kids-chat.example.com"), "https://kids-chat.example.com")
+        XCTAssertEqual(web("fort://open?url=https%3A%2F%2Fpbskids.org%2Fgames"), "https://pbskids.org/games")
+        XCTAssertNil(web("fort://open?url=javascript:alert(1)"))
+        XCTAssertNil(web("fort://open?url=file:///etc/passwd"))
+        XCTAssertNil(web("fort://open"))
+        XCTAssertNil(web("fort://settings?url=pbskids.org"))
+        XCTAssertNil(web("https://example.com"), "not a fort link")
+    }
+
     func testIncomingLinkReusesStartPageElseOpensATab() {
         let tabs = makeTabs()
         let link = URL(string: "https://example.com/")!

@@ -82,6 +82,9 @@ struct ContentView: View {
         .onOpenURL { url in
             if TabsModel.isWebLink(url) {
                 tabs.openIncoming(url)
+            } else if let web = TabsModel.webLink(fromFortLink: url) {
+                // Same path as a link from another app: the tab's checks apply.
+                tabs.openIncoming(web)
             } else if url.isFileURL {
                 receiveCertificate(at: url)
             }

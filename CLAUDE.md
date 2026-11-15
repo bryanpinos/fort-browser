@@ -134,8 +134,8 @@ keys: browsers with the entitlement are rejected for them.
    plus optional `devices/<device-id>.json`; Fort fetches on connect and every ~15 min, keeps
    the last good config on any error, and shows those fields as "managed from home". Open
    question: whether it may rotate the relay token (needs old + new accepted during a change).
-- Maybe: a `fort://open?url=` link so a Shortcuts Home Screen icon opens Fort straight to
-  Fort Chat (same checks as a typed address).
+- With item 1's build: a `fort://open?url=` link so a Shortcuts Home Screen icon opens Fort
+  straight to Fort Chat (agreed 2026-11-15; same checks as a typed address).
 
 ## Later / not now
 - Family Controls + ManagedSettings entitlement so Fort can shield Safari

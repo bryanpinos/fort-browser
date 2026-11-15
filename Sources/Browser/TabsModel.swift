@@ -82,6 +82,18 @@ final class TabsModel {
         return !(url.host ?? "").isEmpty
     }
 
+    /// `fort://open?url=<address>`, e.g. from a Shortcuts Home Screen icon. Returns
+    /// the web address to open (scheme optional, https assumed), or nil.
+    static func webLink(fromFortLink url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "fort", url.host?.lowercased() == "open",
+              let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "url" })?.value?
+                .trimmingCharacters(in: .whitespaces), !target.isEmpty else { return nil }
+        let candidate = target.contains("://") ? target : "https://" + target
+        guard let web = URL(string: candidate), isWebLink(web) else { return nil }
+        return web
+    }
+
     /// A link tapped in another app (Fort as the default browser). It loads in
     /// an ordinary tab, so the relay and the allow/deny policy apply exactly as
     /// they do for a typed address. Reuses the selected tab when it's on the

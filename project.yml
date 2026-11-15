@@ -43,7 +43,7 @@ targets:
       properties:
         CFBundleDisplayName: Fort
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleVersion: "2"
         # Only standard HTTPS/TLS: exempt, so uploads skip the export question.
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
@@ -60,6 +60,8 @@ targets:
             LSHandlerRank: Alternate
             LSItemContentTypes: [com.rsa.pkcs-12]
         LSSupportsOpeningDocumentsInPlace: false
+        # Only when a child chooses to take a photo for a website (e.g. Fort Chat).
+        NSCameraUsageDescription: Fort uses the camera only when you choose to take a photo to share with a website, like showing Fort Chat a rock you found.
         NSLocalNetworkUsageDescription: Fort checks that this device can reach your home network before allowing browsing.
         LSApplicationQueriesSchemes:
           - tailscale
@@ -68,6 +70,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: web
             CFBundleURLSchemes: [http, https]
+          # fort://open?url=kids-chat.example.com, for a Home Screen icon made in Shortcuts.
+          - CFBundleURLName: fort
+            CFBundleURLSchemes: [fort]
         NSAppTransportSecurity:
           # Probe/proxy/log endpoints on the tailnet are usually plain http.
           NSAllowsLocalNetworking: true
