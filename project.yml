@@ -23,6 +23,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.pinos.fort
+        # Here, not only in the project settings: XcodeGen's app-target defaults
+        # override those with "1,2" (iPhone + iPad).
+        TARGETED_DEVICE_FAMILY: "2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     platform: iOS
     sources:
