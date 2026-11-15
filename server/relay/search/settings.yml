@@ -1,0 +1,21 @@
+# Kids' search (Fort Chat): SearXNG on the Fort VLAN, so the UCG's Kids content
+# filter and SafeSearch DNS apply to every engine request. Only the Kids Guard
+# filter in Fort Chat queries it, and it checks every result before use.
+# secret_key comes from SEARXNG_SECRET in the container environment (.env).
+use_default_settings:
+  engines:
+    keep_only:
+      - duckduckgo
+      - bing
+      - brave
+      - wikipedia
+general:
+  # Wikipedia's API asks for a contact in the User-Agent.
+  contact_url: mailto:fortsafebrowser@gmail.com
+server:
+  limiter: false
+  image_proxy: false
+search:
+  safe_search: 2
+  formats:
+    - json

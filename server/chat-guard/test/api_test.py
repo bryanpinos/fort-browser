@@ -58,10 +58,16 @@ r=chat([{"role":"user","content":"Why is the sky blue? "+"x "*2500}]); m=mock_la
 check("oversized message refused","x x x" not in s and "isn't right" in s)
 
 import base64
-IMG="data:image/jpeg;base64,"+base64.b64encode(open("/tmp/imgtest/rock.jpg","rb").read()).decode()
+import struct, zlib
+def _png(w=64, h=64):
+    # A small valid PNG (a blue-green gradient), so the suite needs no image files.
+    raw = b"".join(b"\x00" + bytes(v for x in range(w) for v in (0, x * 4 % 256, 200)) for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+IMG="data:image/png;base64,"+base64.b64encode(_png()).decode()
 def photo_msg(text, urls): return [{"role":"user","content":[{"type":"text","text":text}]+[{"type":"image_url","image_url":{"url":x}} for x in urls]}]
 r=chat(photo_msg("Why is the sky blue? What is in this picture?",[IMG])); m=mock_last(); s=json.dumps(m["messages"])
-check("ordinary photo reaches the model as a photo", "image_url" in s and "data:image/jpeg" in s and "(message removed)" not in s)
+check("ordinary photo reaches the model as a photo", "image_url" in s and "data:image/png" in s and "(message removed)" not in s)
 r=chat(photo_msg("Why is the sky blue?",["https://example.com/x.jpg"])); m=mock_last(); s=json.dumps(m["messages"])
 check("linked (not embedded) image refused", "example.com/x.jpg" not in s and "(message removed)" in s)
 r=chat(photo_msg("Why is the sky blue?",[IMG]*5)); m=mock_last(); s=json.dumps(m["messages"])

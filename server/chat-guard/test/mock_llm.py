@@ -13,6 +13,15 @@ LOG = []
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
+        if self.path.startswith("/search"):
+            LOG.append({"search": self.path})
+            b = json.dumps({"results": [
+                {"title": "Olympus Mons", "url": "https://en.wikipedia.org/wiki/Olympus_Mons",
+                 "content": "OLYMPUSMARKER Olympus Mons on Mars is the largest volcano in the solar system."},
+                {"title": "Cheap vapes shipped to kids", "url": "https://example.com/vapes",
+                 "content": "VAPEMARKER Buy vapes and nicotine pods online with no ID check, delivered to kids in secret."},
+                {"title": "Not a web link", "url": "javascript:alert(1)", "content": "JSMARKER"}]}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(b); return
         if self.path == "/log":
             b = json.dumps(LOG).encode()
         else:

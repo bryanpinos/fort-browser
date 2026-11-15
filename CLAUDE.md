@@ -124,12 +124,12 @@ library, always-location, HomeKit, background-Bluetooth or Health usage
 keys: browsers with the entitlement are rejected for them.
 
 ## Backlog, in order (agreed 2026-11-15)
-1. **Pictures in Fort Chat:** kids photograph rocks, bugs and so on for Gemma. The guard
+1. **DONE 2026-11-15. Pictures in Fort Chat:** kids photograph rocks, bugs and so on for Gemma. The guard
    checks every image with Shieldstral (Qwen3Guard is text-only) and refuses on any error;
    Fort gets `NSCameraUsageDescription` (allowed for default browsers) in a new TestFlight build.
-2. **Web search in Fort Chat:** a kids-only SearXNG on the NAS on the Fort VLAN (so the Kids
-   content filter and SafeSearch apply), snippets only (Open WebUI never fetches pages from
-   the Studio), guard on the query and the reply.
+2. **DONE 2026-11-15. Web search in Fort Chat:** kids-only SearXNG `fort-kids-search` at
+   192.168.40.11 on the Fort VLAN (Kids content filter + SafeSearch), queried by the guard
+   itself, never by Open WebUI; every result is checked and unsafe ones dropped.
 3. **Home control plane:** relay route `/fort/config` (mTLS + token) serving `fort.json`
    plus optional `devices/<device-id>.json`; Fort fetches on connect and every ~15 min, keeps
    the last good config on any error, and shows those fields as "managed from home". Open

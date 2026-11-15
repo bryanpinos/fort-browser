@@ -83,6 +83,29 @@ services:
     mem_limit: 64m
     pids_limit: 32
 
+  # Kids' search for Fort Chat: SearXNG with its own address on the Fort VLAN,
+  # so the Kids content filter and SafeSearch apply to its searches. Queried
+  # only by the Kids Guard filter (Fort Chat), which checks every result.
+  kids-search:
+    image: docker.io/searxng/searxng:latest
+    container_name: fort-kids-search
+    restart: unless-stopped
+    networks:
+      fort_vlan:
+        ipv4_address: 192.168.40.11
+        mac_address: "02:46:6f:72:74:0b"
+    dns: [192.168.40.1]
+    environment:
+      SEARXNG_BASE_URL: http://192.168.40.11:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+    volumes:
+      - ./search:/etc/searxng
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 128
+
   # Makes connecting to the content filter's sinkhole fail at once. The gateway
   # silently drops it from this VLAN, so a blocked name would otherwise wait out
   # the 5 s connect timeout. Only speed depends on this; re-applied because the

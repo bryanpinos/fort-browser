@@ -2,7 +2,7 @@
 title: Kids Guard
 author: Fort
 description: Checks every message and reply in the kids' chat with two local guard models. Fails closed.
-version: 0.2.0
+version: 0.3.0
 requirements: aiohttp
 """
 # Attach to the kids' model only. How it holds up:
@@ -55,6 +55,11 @@ CARE_INSTRUCTION = ("A child may be going through something hard or may not be s
                     "someone at home, pick someone else you trust. If you ever feel like hurting yourself, you can call or "
                     "text 988 any time. If you're in danger right now, call 911.")
 WITHHELD_REPLY = "Hmm, I can't share that one. Want to ask me something else, or check with a grown-up?"
+SEARCH_NOTE = ("\n\nThe child asked you to search the web. These results were already checked for safety; use "
+               "them if they help, keep it simple, and name the website when you use one. If they don't answer "
+               "the question, say so.\n\n")
+SEARCH_DOWN_NOTE = ("\n\nThe child asked you to search the web, but search isn't working right now. Answer from what "
+                    "you know and say you couldn't search this time.")
 GUARD_DOWN = "The chat's safety check isn't working right now, so I can't answer. Please try again in a little while."
 
 # Qwen3Guard's official response-moderation prompt. LM Studio treats a final
@@ -80,6 +85,9 @@ class Filter:
         image_query: str = Field(default=Q_IMAGE, description="The yes/no question Shieldstral answers for each photo.")
         max_images: int = Field(default=4, description="Photos allowed in one message.")
         max_image_chars: int = Field(default=12_000_000, description="Largest embedded photo (base64 characters, about 9 MB).")
+        search_url: str = Field(default="http://192.168.40.11:8080/search",
+                                description="Kids' SearXNG on the Fort VLAN (Kids content filter + SafeSearch apply).")
+        search_results: int = Field(default=5, description="Checked results given to the model.")
 
     def __init__(self):
         self.valves = self.Valves()
@@ -197,6 +205,35 @@ class Filter:
             return False
         return await self._shield(Q_BLOCK, kid, reply) <= self.valves.block_threshold
 
+    # ---- web search -----------------------------------------------------
+
+    async def _search(self, query):
+        """Checked results for query, or None if search itself is unavailable.
+        A guard failure while checking results raises GuardError (fail closed)."""
+        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(self.valves.search_url,
+                                       params={"q": query[:300], "format": "json", "safesearch": "2"}) as r:
+                    if r.status != 200:
+                        return None
+                    results = (await r.json(content_type=None)).get("results", [])
+        except Exception as e:
+            log.error("kids guard search failed: %r", e)
+            return None
+        safe = []
+        for item in results[: self.valves.search_results * 3]:
+            url = str(item.get("url") or "")
+            if not url.startswith(("http://", "https://")):
+                continue
+            text = f"{item.get('title') or ''}. {item.get('content') or ''}".strip()[:600]
+            if (await self._check_message(text))["block"]:
+                continue
+            safe.append(f"- {item.get('title') or url} ({url}): {item.get('content') or ''}"[:700])
+            if len(safe) >= self.valves.search_results:
+                break
+        return safe
+
     # ---- alerting --------------------------------------------------------
 
     async def _alert(self, user, text):
@@ -235,7 +272,9 @@ class Filter:
     async def inlet(self, body, __user__=None, __metadata__=None):
         if (__metadata__ or {}).get("task"):
             return body  # title and tag generation; the replies they summarize were already checked
-        # Only this filter decides these, whatever the chat UI sent.
+        wants_search = bool((body.get("features") or {}).get("web_search"))
+        # Only this filter decides these, whatever the chat UI sent. Web search is
+        # done here (below), never by Open WebUI, so every result gets checked.
         for field in ("tools", "tool_ids", "files", "features", "tool_servers", "skill_ids"):
             body.pop(field, None)
         body["stream"] = True
@@ -267,10 +306,13 @@ class Filter:
             alert = latest["alert"]
             if not alert and not latest["block"] and len(quiet) > 1 and len(recent) <= self.valves.max_message_chars:
                 alert = await self._shield(Q_ALERT, recent) > self.valves.block_threshold
+            kid_text = self._text_of(users[-1].get("content"))
+            results = None
+            if wants_search and not latest["block"] and not alert and kid_text.strip():
+                results = await self._search(kid_text)
         except GuardError as e:
             log.error("kids guard failed closed on a message: %s", e)
             raise Exception(GUARD_DOWN)
-        kid_text = self._text_of(users[-1].get("content"))
         if alert:
             await self._alert(__user__, kid_text)
         system = SYSTEM_PROMPT
@@ -279,6 +321,9 @@ class Filter:
             system = CARE_INSTRUCTION if alert else DECLINE_INSTRUCTION
         elif alert:
             system = CARE_INSTRUCTION
+        elif wants_search:
+            system += (SEARCH_NOTE + "\n".join(results)) if results else SEARCH_DOWN_NOTE if results is None else (
+                SEARCH_NOTE + "(No safe results were found.)")
         body["messages"] = [{"role": "system", "content": system}] + cleaned
         return body
 
