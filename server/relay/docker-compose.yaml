@@ -106,6 +106,30 @@ services:
     mem_limit: 256m
     pids_limit: 128
 
+  # Kids' page reader for Fort Chat: fetches a page a kid links to, from the Fort
+  # VLAN so the Kids content filter applies. Only the Studio may call it, and
+  # the Kids Guard checks the text before the model sees it.
+  kids-fetch:
+    image: python:3.12-alpine
+    container_name: fort-kids-fetch
+    restart: unless-stopped
+    networks:
+      fort_vlan:
+        ipv4_address: 192.168.40.12
+        mac_address: "02:46:6f:72:74:0c"
+    dns: [192.168.40.1]
+    user: "1000:10"
+    command: ["python", "-u", "/kids_fetch.py"]
+    environment:
+      ALLOWED_CLIENTS: 192.168.1.20
+    volumes:
+      - ./kids_fetch.py:/kids_fetch.py:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+
   # Makes connecting to the content filter's sinkhole fail at once. The gateway
   # silently drops it from this VLAN, so a blocked name would otherwise wait out
   # the 5 s connect timeout. Only speed depends on this; re-applied because the

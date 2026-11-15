@@ -2,7 +2,7 @@
 title: Kids Guard
 author: Fort
 description: Checks every message and reply in the kids' chat with two local guard models. Fails closed.
-version: 0.4.0
+version: 0.5.0
 requirements: aiohttp
 """
 # Attach to the kids' model only. How it holds up:
@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 import time
 from collections import OrderedDict
 
@@ -38,13 +39,17 @@ Q_ALERT = ("Does this suggest a child may be in danger and needs a trusted adult
            "self-harm, disordered eating, abuse, a threat of violence, running away, or an adult or stranger "
            "asking for secrecy, pictures, an address, or to meet?")
 
-SYSTEM_PROMPT = ("You are a friendly helper for kids aged 9 to 13. Use simple, kind, encouraging words and keep "
-                 "answers fairly short. Help with school, hobbies, games, stories and curiosity. Don't discuss "
-                 "sexual content, how to hurt anyone, drugs, alcohol, or breaking rules, and don't ask for personal "
-                 "information. Never ask a child to keep a secret from a parent. For big worries, encourage talking "
-                 "to a parent or another trusted adult. When a child shares a photo, describe what you see and make a "
-                 "friendly best guess (say when you're not sure), but never identify or guess anything about a real "
-                 "person in it, and never comment on a child's looks or body.")
+SYSTEM_PROMPT = ("You are Fort Chat, a friendly, knowledgeable helper for kids aged 9 to 13. Give real, specific "
+                 "answers the way an expert who loves the subject would explain it to a curious kid: simple words, but "
+                 "actual facts, details and reasons, not vague advice. Help with school, hobbies, collecting, games, "
+                 "stories and curiosity. When a child asks whether something is worth buying, explain what matters for "
+                 "that kind of thing (for example whether it's genuine, its condition and size, where it comes from, "
+                 "whether the price seems fair, and any warning signs), give your honest take, then add one short line "
+                 "that a grown-up decides about spending money. Don't discuss sexual content, how to hurt anyone, drugs, "
+                 "alcohol, or breaking rules, and don't ask for personal information. Never ask a child to keep a secret "
+                 "from a parent. For big worries, encourage talking to a parent or another trusted adult. When a child "
+                 "shares a photo, describe what you see and make a friendly best guess (say when you're not sure), but "
+                 "never identify or guess anything about a real person in it, and never comment on a child's looks or body.")
 DECLINE_INSTRUCTION = ("A child asked for something that isn't right for this chat. Reply with exactly this, "
                        "and nothing else: That's not something I can help with. Want to ask me about something else?")
 # Worded for not knowing what happened: blocked messages never reach the model, and
@@ -65,6 +70,9 @@ SEARCH_NOTE = ("\n\nHere are web search results for the child's question. They w
                "the question, say so.\n\n")
 SEARCH_DOWN_NOTE = ("\n\nThe child asked you to search the web, but search isn't working right now. Answer from what "
                     "you know and say you couldn't search this time.")
+PAGES_NOTE = ("\n\nThe child shared links. Here is what each page says; the text was already checked for safety. "
+              "Use it to give a specific answer.\n\n")
+URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
 GUARD_DOWN = "The chat's safety check isn't working right now, so I can't answer. Please try again in a little while."
 
 # Qwen3Guard's official response-moderation prompt. LM Studio treats a final
@@ -93,6 +101,9 @@ class Filter:
         search_url: str = Field(default="http://192.168.40.11:8080/search",
                                 description="Kids' SearXNG on the Fort VLAN (Kids content filter + SafeSearch apply).")
         search_results: int = Field(default=5, description="Checked results given to the model.")
+        fetch_url: str = Field(default="http://192.168.40.12:8080/fetch",
+                               description="Kids' page reader on the Fort VLAN (Kids content filter applies).")
+        max_links: int = Field(default=3, description="Linked pages read per message.")
         auto_search: bool = Field(default=True, description="Let the chat model decide when a message needs the web.")
         chat_model: str = Field(default="gemma-4-31b-it", description="Model that makes the search decision.")
 
@@ -214,6 +225,25 @@ class Filter:
 
     # ---- web search -----------------------------------------------------
 
+    async def _read_page(self, url):
+        """A shared page's text for the model, after checking it. Returns a short note
+        instead when the page can't be read or doesn't pass the check."""
+        try:
+            timeout = aiohttp.ClientTimeout(total=25)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(self.valves.fetch_url, params={"url": url}) as r:
+                    page = await r.json(content_type=None) if r.status == 200 else None
+        except Exception as e:
+            log.error("kids guard couldn't read a page: %r", e)
+            page = None
+        if not page:
+            return f"- {url}: (couldn't open this page)"
+        text = " ".join(x for x in (page.get("title"), page.get("description"), page.get("text")) if x).strip()
+        for start in range(0, len(text), 1500):  # GuardError propagates: fail closed
+            if (await self._check_message(text[start:start + 1500]))["block"]:
+                return f"- {url}: (this page can't be shown here)"
+        return f"- {url}:\n{text}"
+
     async def _needs_search(self, text):
         """The chat model's yes/no on whether text needs the web. Any failure is a no:
         it only decides whether to look things up, never whether a message is allowed."""
@@ -331,6 +361,10 @@ class Filter:
             if not alert and not latest["block"] and len(quiet) > 1 and len(recent) <= self.valves.max_message_chars:
                 alert = await self._shield(Q_ALERT, recent) > self.valves.block_threshold
             kid_text = self._text_of(users[-1].get("content"))
+            pages = []
+            if not latest["block"] and not alert:
+                for url in list(dict.fromkeys(URL_RE.findall(kid_text)))[: self.valves.max_links]:
+                    pages.append(await self._read_page(url.rstrip(".,!?;:")))
             results, searched = None, False
             if not latest["block"] and not alert and kid_text.strip() and (
                     wants_search or (self.valves.auto_search and await self._needs_search(kid_text))):
@@ -347,10 +381,13 @@ class Filter:
             system = CARE_INSTRUCTION if alert else DECLINE_INSTRUCTION
         elif alert:
             system = CARE_INSTRUCTION
-        elif searched and results:
-            system += SEARCH_NOTE + "\n".join(results)
-        elif searched and results is None and wants_search:
-            system += SEARCH_DOWN_NOTE  # only mention it when the child asked for a search
+        else:
+            if pages:
+                system += PAGES_NOTE + "\n\n".join(pages)
+            if searched and results:
+                system += SEARCH_NOTE + "\n".join(results)
+            elif searched and results is None and wants_search:
+                system += SEARCH_DOWN_NOTE  # only mention it when the child asked for a search
         body["messages"] = [{"role": "system", "content": system}] + cleaned
         return body
 
