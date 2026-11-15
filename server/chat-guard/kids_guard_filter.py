@@ -2,7 +2,7 @@
 title: Kids Guard
 author: Fort
 description: Checks every message and reply in the kids' chat with two local guard models. Fails closed.
-version: 0.3.0
+version: 0.4.0
 requirements: aiohttp
 """
 # Attach to the kids' model only. How it holds up:
@@ -55,7 +55,12 @@ CARE_INSTRUCTION = ("A child may be going through something hard or may not be s
                     "someone at home, pick someone else you trust. If you ever feel like hurting yourself, you can call or "
                     "text 988 any time. If you're in danger right now, call 911.")
 WITHHELD_REPLY = "Hmm, I can't share that one. Want to ask me something else, or check with a grown-up?"
-SEARCH_NOTE = ("\n\nThe child asked you to search the web. These results were already checked for safety; use "
+NEEDS_SEARCH = ("You decide whether a children's chat helper should search the web before answering. Answer yes only if "
+                "a good answer needs current or very specific facts you may not know: recent news, sports scores, "
+                "schedules, weather, prices, new releases, or things that change over time. Answer no for stories, "
+                "jokes, games, homework help, math, spelling, writing help, and explanations of things that don't "
+                "change. Answer only yes or no.")
+SEARCH_NOTE = ("\n\nHere are web search results for the child's question. They were already checked for safety; use "
                "them if they help, keep it simple, and name the website when you use one. If they don't answer "
                "the question, say so.\n\n")
 SEARCH_DOWN_NOTE = ("\n\nThe child asked you to search the web, but search isn't working right now. Answer from what "
@@ -88,6 +93,8 @@ class Filter:
         search_url: str = Field(default="http://192.168.40.11:8080/search",
                                 description="Kids' SearXNG on the Fort VLAN (Kids content filter + SafeSearch apply).")
         search_results: int = Field(default=5, description="Checked results given to the model.")
+        auto_search: bool = Field(default=True, description="Let the chat model decide when a message needs the web.")
+        chat_model: str = Field(default="gemma-4-31b-it", description="Model that makes the search decision.")
 
     def __init__(self):
         self.valves = self.Valves()
@@ -207,6 +214,23 @@ class Filter:
 
     # ---- web search -----------------------------------------------------
 
+    async def _needs_search(self, text):
+        """The chat model's yes/no on whether text needs the web. Any failure is a no:
+        it only decides whether to look things up, never whether a message is allowed."""
+        key = "ns:" + hashlib.sha256(text.encode()).hexdigest()
+        if key in self._verdicts:
+            return self._verdicts[key]
+        try:
+            out = await self._post("chat/completions", {
+                "model": self.valves.chat_model, "temperature": 0, "max_tokens": 5,
+                "messages": [{"role": "system", "content": NEEDS_SEARCH}, {"role": "user", "content": text[:1000]}]})
+            answer = (out["choices"][0]["message"].get("content") or "").strip().lower()
+        except Exception as e:
+            log.error("kids guard search decision failed (not searching): %r", e)
+            return False
+        self._verdicts[key] = answer.startswith("yes")
+        return self._verdicts[key]
+
     async def _search(self, query):
         """Checked results for query, or None if search itself is unavailable.
         A guard failure while checking results raises GuardError (fail closed)."""
@@ -307,8 +331,10 @@ class Filter:
             if not alert and not latest["block"] and len(quiet) > 1 and len(recent) <= self.valves.max_message_chars:
                 alert = await self._shield(Q_ALERT, recent) > self.valves.block_threshold
             kid_text = self._text_of(users[-1].get("content"))
-            results = None
-            if wants_search and not latest["block"] and not alert and kid_text.strip():
+            results, searched = None, False
+            if not latest["block"] and not alert and kid_text.strip() and (
+                    wants_search or (self.valves.auto_search and await self._needs_search(kid_text))):
+                searched = True
                 results = await self._search(kid_text)
         except GuardError as e:
             log.error("kids guard failed closed on a message: %s", e)
@@ -321,9 +347,10 @@ class Filter:
             system = CARE_INSTRUCTION if alert else DECLINE_INSTRUCTION
         elif alert:
             system = CARE_INSTRUCTION
-        elif wants_search:
-            system += (SEARCH_NOTE + "\n".join(results)) if results else SEARCH_DOWN_NOTE if results is None else (
-                SEARCH_NOTE + "(No safe results were found.)")
+        elif searched and results:
+            system += SEARCH_NOTE + "\n".join(results)
+        elif searched and results is None and wants_search:
+            system += SEARCH_DOWN_NOTE  # only mention it when the child asked for a search
         body["messages"] = [{"role": "system", "content": system}] + cleaned
         return body
 
