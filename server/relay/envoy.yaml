@@ -19,6 +19,7 @@
 #   4. any other CONNECT            -> 403
 #   5. GET /fort/health + token     -> 200 (app's gate check); else 404
 #   6. POST /fort/ingest + token    -> fort-ingest (page review queue)
+#   8. GET /fort/config + token     -> fort-ingest: the home config for this iPad
 #   7. GET /fort/blocked + token    -> fort-ingest: does the home filter block
 #      this name? Fort asks after a failed page load, to show its block page.
 # The authority deny-list can't see what a public name resolves to, so a name
@@ -163,6 +164,19 @@ static_resources:
                   - name: ":method"
                     string_match: {exact: "POST"}
                 route: {cluster: fort_ingest, timeout: 15s}
+                request_headers_to_remove: [x-fort-token]
+                request_headers_to_add:
+                - header: {key: x-fort-device, value: "%DOWNSTREAM_PEER_URI_SAN%"}
+                  append_action: OVERWRITE_IF_EXISTS_OR_ADD
+              # Home config (control plane): fort.json plus this iPad's file.
+              - match:
+                  path: "/fort/config"
+                  headers:
+                  - name: x-fort-token
+                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                  - name: ":method"
+                    string_match: {exact: "GET"}
+                route: {cluster: fort_ingest, timeout: 5s}
                 request_headers_to_remove: [x-fort-token]
                 request_headers_to_add:
                 - header: {key: x-fort-device, value: "%DOWNSTREAM_PEER_URI_SAN%"}

@@ -162,6 +162,7 @@ services:
     volumes:
       - ./ingest.py:/ingest.py:ro
       - ./review:/data
+      - ./config:/config:ro          # home config: fort.json + devices/<id>.json
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

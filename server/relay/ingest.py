@@ -1,5 +1,7 @@
-"""Fort ingest: receives page/navigation events from Fort via the relay, and
-answers whether the home filter blocks a name (GET /fort/blocked?host=...).
+"""Fort ingest: receives page/navigation events from Fort via the relay, answers
+whether the home filter blocks a name (GET /fort/blocked?host=...), and serves
+the home config (GET /fort/config): config/fort.json for every iPad with
+config/devices/<device-id>.json layered on top (its keys replace fort.json's).
 
 Runs in the relay container's network namespace (compose network_mode
 "service:relay") and listens on 127.0.0.1 only, so Envoy is the only thing
@@ -28,6 +30,10 @@ MAX_EVENTS = 200
 LIMITS = {"url": 2048, "title": 300, "text": 4000, "reason": 100}
 KINDS = {"nav", "page"}
 # What the UCG's content filter answers for blocked names (ads get 0.0.0.0).
+CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
+DEVICE_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# Settings the home config may never change: the iPad's own relay connection.
+LOCAL_ONLY = {"proxy"}
 SINKHOLES = {"203.0.113.250", "2001:db8:1000::fa", "0.0.0.0", "::"}
 HOSTNAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
@@ -76,6 +82,28 @@ def blocked_at_home(host):
     except OSError:
         return False
     return bool(addresses & SINKHOLES)
+
+
+def home_config(device):
+    """Merged config for one device, or None if there's no fort.json."""
+    def load(path):
+        with open(path) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"{path} is not a JSON object")
+        return data
+    try:
+        merged = load(os.path.join(CONFIG_DIR, "fort.json"))
+    except FileNotFoundError:
+        return None
+    if DEVICE_ID.match(device):
+        try:
+            merged.update(load(os.path.join(CONFIG_DIR, "devices", device + ".json")))
+        except FileNotFoundError:
+            pass
+    for key in LOCAL_ONLY:
+        merged.pop(key, None)
+    return merged
 
 
 def host_of(url):
@@ -145,8 +173,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parts = urlsplit(self.path)
+        device = self.headers.get("x-fort-device", "")
+        if not device.startswith(DEVICE_PREFIX):
+            return self.reply(404)
+        if parts.path == "/fort/config":
+            try:
+                config = home_config(device[len(DEVICE_PREFIX):])
+            except (OSError, ValueError) as e:
+                # A broken file must not reach the iPads; they keep their last good config.
+                print(f"home config error: {e}", flush=True)
+                return self.reply(500)
+            if config is None:
+                return self.reply(404)
+            body = json.dumps(config, sort_keys=True).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         host = parse_qs(parts.query).get("host", [""])[0]
-        if parts.path != "/fort/blocked" or not self.headers.get("x-fort-device", "").startswith(DEVICE_PREFIX):
+        if parts.path != "/fort/blocked":
             return self.reply(404)
         if not HOSTNAME.match(host):
             return self.reply(400)
