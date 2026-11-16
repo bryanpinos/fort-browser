@@ -128,14 +128,16 @@ final class NetworkGate {
 
     /// Fetches the home config over the same mutual-TLS session as the health
     /// check. Only a 200 with a body is handed on; anything else changes nothing.
+    /// Returns whether the relay answered at all (a 404, "no home config", counts).
     @MainActor
-    private func fetchHomeConfig(_ proxy: GateConfig.ProxyConfig, session: URLSession) async {
-        guard let url = Self.relayConfigURL(for: proxy) else { return }
+    private func fetchHomeConfig(_ proxy: GateConfig.ProxyConfig, session: URLSession) async -> Bool {
+        guard let url = Self.relayConfigURL(for: proxy) else { return true }
         var request = URLRequest(url: url)
         if let token = proxy.authToken { request.setValue(token, forHTTPHeaderField: "x-fort-token") }
         guard let (data, response) = try? await session.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return }
-        homeConfigHandler?(data)
+              let status = (response as? HTTPURLResponse)?.statusCode else { return false }
+        if status == 200, !data.isEmpty { homeConfigHandler?(data) }
+        return true
     }
 
     // MARK: - Why a page failed
@@ -194,9 +196,11 @@ final class NetworkGate {
             switch (response as? HTTPURLResponse)?.statusCode {
             case 200:
                 state = .connected
-                if lastHomeFetch.map({ Date().timeIntervalSince($0) > Self.homeConfigInterval }) ?? true {
+                // Only an answer from the relay counts as fetched: a fetch cut off by a
+                // gate restart or a network error is retried at the next check.
+                if lastHomeFetch.map({ Date().timeIntervalSince($0) > Self.homeConfigInterval }) ?? true,
+                   await fetchHomeConfig(proxy, session: session) {
                     lastHomeFetch = Date()
-                    await fetchHomeConfig(proxy, session: session)
                 }
             case 404: state = .disconnected(reason: "Home isn't accepting this iPad (check the relay token)")
             default: state = .disconnected(reason: "Home answered unexpectedly")
