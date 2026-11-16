@@ -114,6 +114,9 @@ argument `-fort.config.json <hex>` (UserDefaults argument domain).
 - Kid-friendly message when the Local Network permission was denied.
 
 ## Default browser (waiting on Apple)
+Requested 2026-11-03 (ID 65756A2WWF), rejected 2026-11-14 because there was no
+testable build; re-requested 2026-11-16 (ID 2U7T7NM6PD) with the public TestFlight link
+https://testflight.apple.com/join/BsRg4eQ2.
 App side done: http/https in `CFBundleURLTypes`, `TabsModel.openIncoming`
 (web links only; reuses a start-page tab, else a new tab, else the selected
 one), and a "Default browser" row in Parent settings (iOS 18.2+). Remaining:
