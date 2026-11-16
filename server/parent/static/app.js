@@ -15,7 +15,7 @@ async function show() {
   if (!current) return;
   const k = kids.find(x => x.id === current);
   $('#detail').innerHTML = `<div class="tabs"><button data-t="browsing" class="${tab === 'browsing' ? 'on' : ''}">Browsing</button><button data-t="chats" class="${tab === 'chats' ? 'on' : ''}">Fort Chat</button></div><div id="pane" class="muted">Loading…</div>`;
-  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; show(); });
+  document.querySelectorAll('#detail .tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; show(); });
   try { tab === 'browsing' ? await showBrowsing(k) : await showChats(k); } catch (e) { $('#pane').textContent = e.message; }
 }
 async function showBrowsing(k) {

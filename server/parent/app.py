@@ -1,8 +1,9 @@
 """Fort Parent: the parents' console for Fort.
 
 Shows each kid's browsing (from the relay's review database) and Fort Chat
-conversations (from the kids' Open WebUI), behind passkey sign-in. Stage 1 is
-read-only. Runs on the NAS; Caddy serves it as https://parent.example.com and
+conversations (from the kids' Open WebUI), and edits the home config the relay
+serves to the iPads (config/fort.json + config/devices/<device>.json), behind
+passkey sign-in. Runs on the NAS; Caddy serves it as https://parent.example.com and
 refuses the kids' VLAN.
 
 Sign-in: passkeys only (WebAuthn). The first passkey is added with a one-time
@@ -27,6 +28,8 @@ OWUI_URL = os.environ.get("OWUI_URL", "http://192.168.1.20:3001").rstrip("/")
 OWUI_KEY = os.environ.get("OWUI_KEY", "")
 KIDS = json.loads(os.environ.get("KIDS", "[]"))  # [{"id","name","device","chat_user"}]
 PORT = int(os.environ.get("PORT", "8080"))
+CONFIG_DIR = os.environ.get("CONFIG_DIR", "/homeconfig")
+HISTORY_KEEP = 100
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 SESSION_DAYS = 30
 COOKIE = "fp_session"
@@ -196,6 +199,106 @@ def chat_detail(k, chat_id):
     return {"title": c.get("title"), "updated_at": c.get("updated_at"), "messages": list(reversed(msgs))}
 
 
+# ---- home config (control plane) ------------------------------------------
+# Fields the console manages. Anything else (notably the relay connection) is
+# refused, so a save can never cut an iPad off from home.
+HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def _web_url(v):
+    if not isinstance(v, str):
+        return False
+    u = urlsplit(v.strip())
+    return u.scheme in ("http", "https") and bool(u.hostname) and HOST.match(u.hostname.lower()) is not None
+
+
+def _host_list(v):
+    return isinstance(v, list) and len(v) <= 500 and all(isinstance(h, str) and HOST.match(h) for h in v)
+
+
+VALIDATORS = {
+    "favorites": lambda v: isinstance(v, list) and len(v) <= 24 and all(
+        isinstance(f, dict) and set(f) == {"name", "url"} and isinstance(f["name"], str) and 0 < len(f["name"].strip()) <= 40
+        and _web_url(f["url"]) for f in v),
+    "denylist": _host_list,
+    "allowlist": _host_list,
+    "homeURL": _web_url,
+    "enforceSafeSearch": lambda v: isinstance(v, bool),
+    "reviewPages": lambda v: isinstance(v, bool),
+    "parentPINHash": lambda v: isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v) is not None,
+}
+
+
+def validate_config(data):
+    """Returns a list of problems (empty if it's fine to save)."""
+    if not isinstance(data, dict):
+        return ["Settings must be a set of fields."]
+    problems = [f"\"{k}\" can't be set here." for k in data if k not in VALIDATORS]
+    problems += [f"\"{k}\" doesn't look right." for k, v in data.items() if k in VALIDATORS and not VALIDATORS[k](v)]
+    return problems
+
+
+def config_path(scope):
+    if scope == "everyone":
+        return os.path.join(CONFIG_DIR, "fort.json")
+    k = kid(scope)
+    return os.path.join(CONFIG_DIR, "devices", k["device"] + ".json") if k else None
+
+
+def read_config(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+
+
+def history_dir():
+    return os.path.join(CONFIG_DIR, "history")
+
+
+def write_config(path, data):
+    """Archives the current file, then replaces it atomically (so the relay
+    never serves half a file). An empty set of fields removes the file."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(history_dir(), exist_ok=True)
+    name = os.path.basename(path)
+    if os.path.exists(path):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        with open(path) as src, open(os.path.join(history_dir(), f"{name}.{stamp}"), "w") as dst:
+            dst.write(src.read())
+        old = sorted(x for x in os.listdir(history_dir()) if x.startswith(name + "."))
+        for x in old[:-HISTORY_KEEP]:
+            os.remove(os.path.join(history_dir(), x))
+    if not data:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def config_state():
+    out = {"everyone": read_config(config_path("everyone")), "kids": {}}
+    for k in KIDS:
+        out["kids"][k["id"]] = read_config(config_path(k["id"]))
+    return out
+
+
+def history(scope):
+    path = config_path(scope)
+    name = os.path.basename(path)
+    try:
+        versions = sorted((x[len(name) + 1:] for x in os.listdir(history_dir()) if x.startswith(name + ".")), reverse=True)
+    except FileNotFoundError:
+        versions = []
+    return [{"version": v, "fields": read_config(os.path.join(history_dir(), f"{name}.{v}"))} for v in versions[:30]]
+
+
 # ---- HTTP -----------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
@@ -249,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(urlsplit(self.path).query)
         if path in ("/login", "/setup"):
             return self.static(path[1:] + ".html")
-        if path in ("/app.js", "/auth.js", "/login.js", "/setup.js", "/style.css"):
+        if path in ("/app.js", "/auth.js", "/login.js", "/setup.js", "/settings.js", "/style.css"):
             return self.static(path[1:])
         if path == "/":
             return self.static("index.html") if self.authed() else self.send(302, b"", headers=[("Location", "/login")])
@@ -267,6 +370,11 @@ class Handler(BaseHTTPRequestHandler):
                     days = min(max(int((q.get("days") or ["7"])[0]), 1), 30)
                     return self.send(200, browsing(k, days))
                 return self.send(200, chats(k))
+            if path == "/api/config":
+                return self.send(200, {**config_state(), "kidNames": {k["id"]: k["name"] for k in KIDS}})
+            m = re.fullmatch(r"/api/config/([\w-]+)/history", path)
+            if m and config_path(m.group(1)):
+                return self.send(200, history(m.group(1)))
             m = re.fullmatch(r"/api/kids/([\w-]+)/chats/([\w-]+)", path)
             if m and kid(m.group(1)):
                 d = chat_detail(kid(m.group(1)), m.group(2))
@@ -334,6 +442,30 @@ class Handler(BaseHTTPRequestHandler):
             with db() as c:
                 c.execute("UPDATE credentials SET sign_count=?, last_used=? WHERE id=?", (v.new_sign_count, now_iso(), row["id"]))
             return self.send(200, {"ok": True}, headers=[self.session_cookie(new_session())])
+        m = re.fullmatch(r"/api/config/([\w-]+)(/restore)?", path)
+        if m:
+            if not self.authed():
+                return self.send(401, {"error": "sign in"})
+            target = config_path(m.group(1))
+            if not target:
+                return self.send(404, {"error": "not found"})
+            if m.group(2):
+                version = str(data.get("version", ""))
+                if not re.fullmatch(r"\d{8}T\d{6}Z", version):
+                    return self.send(400, {"error": "bad version"})
+                fields = read_config(os.path.join(history_dir(), f"{os.path.basename(target)}.{version}"))
+            else:
+                fields = data.get("fields")
+            problems = validate_config(fields)
+            if problems:
+                return self.send(400, {"error": " ".join(problems)})
+            try:
+                write_config(target, fields)
+            except OSError as e:
+                print(f"config write failed: {e!r}", flush=True)
+                return self.send(500, {"error": "Couldn't save. Nothing was changed."})
+            print(f"home config saved: {m.group(1)} ({', '.join(sorted(fields)) or 'cleared'})", flush=True)
+            return self.send(200, {"ok": True, **config_state()})
         if path == "/auth/logout":
             end_session(self.cookie(COOKIE))
             return self.send(200, {"ok": True}, headers=[("Set-Cookie", f"{COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax")])

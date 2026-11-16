@@ -18,6 +18,7 @@ services:
     volumes:
       - ./data:/data
       - /volume1/docker/fort-relay/review:/review   # read only in code (SQLite WAL needs the dir writable)
+      - /volume1/docker/fort-relay/config:/homeconfig  # home config the relay serves to the iPads
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
