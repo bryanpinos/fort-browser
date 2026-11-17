@@ -1,156 +1,41 @@
-# Fort relay stack. Deployed at /volume1/docker/fort-relay on the NAS.
-#   relay-cert  lego: issues/renews relay.example.com via Route 53 DNS-01
-#   relay       Envoy (distroless, non-root): the relay itself on :8443
-# .env holds LEGO_EMAIL, AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION /
-# AWS_HOSTED_ZONE_ID for lego only; the token lives in envoy.yaml.
+# Fort relay stack. Setup guide: docs/relay.md. Settings: .env (see .env.example).
+#
+# Always on:  relay (Envoy, the relay itself) and ingest (home config, the
+#             "is this blocked?" check and the page-review queue).
+# Optional, by profile (COMPOSE_PROFILES in .env):
+#   route53     relay-cert (Let's Encrypt via Route 53 DNS-01) + ddns
+#   review      worker: page review with a local LLM, reports to Home Assistant
+#   monitoring  monitor: relay health/cert expiry to Home Assistant over MQTT
+#   chat        kids-search (SearXNG) + kids-fetch (page reader) for Fort Chat
+#   unifi       sinkhole-route: instant failure for UniFi content-filter blocks
+#
+# Network: this file puts everything on a plain Docker network and publishes
+# the relay's port. To give the relay its own address on an isolated VLAN
+# instead (recommended), add docker-compose.vlan.yaml via COMPOSE_FILE.
 services:
-  relay-cert:
-    image: goacme/lego:latest
-    container_name: fort-relay-cert
-    restart: unless-stopped
-    env_file: .env
-    entrypoint: ["/bin/sh", "/renew.sh"]
-    volumes:
-      - ./renew.sh:/renew.sh:ro
-      - ./lego:/data
-      - ./certs:/out
-    cap_drop: [ALL]
-    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
-    security_opt: ["no-new-privileges:true"]
-
   relay:
     image: envoyproxy/envoy:distroless-v1.40-latest
     container_name: fort-relay
     restart: unless-stopped
     command: ["-c", "/etc/envoy/envoy.yaml", "--disable-hot-restart", "--log-level", "warn"]
-    # Own address on the Fort VLAN (40): the UCG applies the Kids content
-    # filter, SafeSearch, ad blocking and IPS to this source, and its firewall
-    # isolates the VLAN from the LAN. The WAN port forward targets this IP.
-    networks:
-      fort_vlan:
-        ipv4_address: 192.168.40.10
-        # Fixed (locally administered) MAC so UniFi sees one stable client;
-        # docker otherwise picks a new random MAC on every recreate.
-        mac_address: "02:46:6f:72:74:0a"
-    dns: [192.168.40.1]
+    ports:
+      - "${RELAY_PORT:-8443}:8443"
     volumes:
-      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ./certs:/certs:ro
-      - ./ca:/ca:ro                      # fort-ca.crt (public)
-      - ./clients:/etc/envoy/clients:ro  # clients.yaml: device allowlist
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro   # rendered by render.py
+      - ./certs:/certs:ro                       # relay.crt + relay.key (server cert)
+      - ./ca:/ca:ro                             # client CA certificate (public)
+      - ./clients:/etc/envoy/clients:ro         # clients.yaml: device allowlist
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     mem_limit: 256m
     pids_limit: 256
-    depends_on: [relay-cert]
+    depends_on:
+      relay-cert: {condition: service_started, required: false}
 
-  # Dynamic DNS: keeps relay.example.com -> this home's public IPv4 (Route 53,
-  # that record only, only on change). Same AWS credentials as lego (.env).
-  ddns:
-    image: amazon/aws-cli:latest
-    container_name: fort-relay-ddns
-    restart: unless-stopped
-    env_file: .env
-    entrypoint: ["/bin/bash", "/ddns.sh"]
-    volumes:
-      - ./ddns.sh:/ddns.sh:ro
-    read_only: true
-    tmpfs: [/tmp, /root/.aws]
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 128m
-
-  # Envoy stats + cert expiry -> Home Assistant (MQTT discovery). Shares the
-  # relay's network namespace to reach its loopback-only admin API.
-  monitor:
-    image: python:3.12-alpine
-    container_name: fort-relay-monitor
-    restart: unless-stopped
-    network_mode: "service:relay"
-    depends_on: [relay]
-    command: ["python", "-u", "/monitor.py"]
-    environment:
-      MQTT_HOST: 192.168.1.10
-      MQTT_PORT: "1883"
-    volumes:
-      - ./monitor.py:/monitor.py:ro
-      - ./certs:/certs:ro
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 64m
-    pids_limit: 32
-
-  # Kids' search for Fort Chat: SearXNG with its own address on the Fort VLAN,
-  # so the Kids content filter and SafeSearch apply to its searches. Queried
-  # only by the Kids Guard filter (Fort Chat), which checks every result.
-  kids-search:
-    image: docker.io/searxng/searxng:latest
-    container_name: fort-kids-search
-    restart: unless-stopped
-    networks:
-      fort_vlan:
-        ipv4_address: 192.168.40.11
-        mac_address: "02:46:6f:72:74:0b"
-    dns: [192.168.40.1]
-    environment:
-      SEARXNG_BASE_URL: http://192.168.40.11:8080/
-      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
-    volumes:
-      - ./search:/etc/searxng
-    cap_drop: [ALL]
-    cap_add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 256m
-    pids_limit: 128
-
-  # Kids' page reader for Fort Chat: fetches a page a kid links to, from the Fort
-  # VLAN so the Kids content filter applies. Only the Studio may call it, and
-  # the Kids Guard checks the text before the model sees it.
-  kids-fetch:
-    image: python:3.12-alpine
-    container_name: fort-kids-fetch
-    restart: unless-stopped
-    networks:
-      fort_vlan:
-        ipv4_address: 192.168.40.12
-        mac_address: "02:46:6f:72:74:0c"
-    dns: [192.168.40.1]
-    user: "1000:10"
-    command: ["python", "-u", "/kids_fetch.py"]
-    environment:
-      ALLOWED_CLIENTS: 192.168.1.20
-    volumes:
-      - ./kids_fetch.py:/kids_fetch.py:ro
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 64m
-    pids_limit: 32
-
-  # Makes connecting to the content filter's sinkhole fail at once. The gateway
-  # silently drops it from this VLAN, so a blocked name would otherwise wait out
-  # the 5 s connect timeout. Only speed depends on this; re-applied because the
-  # route dies when the relay is recreated. Holds NET_ADMIN so the relay needn't.
-  sinkhole-route:
-    image: alpine:3
-    container_name: fort-relay-sinkhole-route
-    restart: unless-stopped
-    network_mode: "service:relay"
-    depends_on: [relay]
-    command: ["sh", "-c", "while true; do ip route replace unreachable 203.0.113.250/32; sleep 60; done"]
-    read_only: true
-    cap_drop: [ALL]
-    cap_add: [NET_ADMIN]
-    security_opt: ["no-new-privileges:true"]
-    mem_limit: 16m
-    pids_limit: 16
-
-  # Page review. ingest shares the relay's network namespace (loopback only,
-  # reachable just from Envoy); worker sits on an ordinary network to reach
-  # LM Studio and MQTT. They share nothing but ./review (the SQLite queue).
+  # Home config (/fort/config), "is this blocked?" (/fort/blocked) and the
+  # page-review intake (/fort/ingest). Loopback only, in the relay's namespace.
   ingest:
     image: python:3.12-alpine
     container_name: fort-relay-ingest
@@ -169,19 +54,75 @@ services:
     mem_limit: 64m
     pids_limit: 32
 
+  relay-cert:
+    profiles: [route53]
+    image: goacme/lego:latest
+    container_name: fort-relay-cert
+    restart: unless-stopped
+    env_file: .env
+    entrypoint: ["/bin/sh", "/renew.sh"]
+    volumes:
+      - ./renew.sh:/renew.sh:ro
+      - ./lego:/data
+      - ./certs:/out
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+
+  # Keeps RELAY_DOMAIN pointed at this home's public IPv4 (Route 53, that
+  # record only, only on change).
+  ddns:
+    profiles: [route53]
+    image: amazon/aws-cli:latest
+    container_name: fort-relay-ddns
+    restart: unless-stopped
+    env_file: .env
+    entrypoint: ["/bin/bash", "/ddns.sh"]
+    volumes:
+      - ./ddns.sh:/ddns.sh:ro
+    read_only: true
+    tmpfs: [/tmp, /root/.aws]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+
+  # Envoy stats + cert expiry -> Home Assistant (MQTT discovery). Shares the
+  # relay's network namespace to reach its loopback-only admin API.
+  monitor:
+    profiles: [monitoring]
+    image: python:3.12-alpine
+    container_name: fort-relay-monitor
+    restart: unless-stopped
+    network_mode: "service:relay"
+    depends_on: [relay]
+    command: ["python", "-u", "/monitor.py"]
+    environment:
+      MQTT_HOST: ${MQTT_HOST:?set MQTT_HOST in .env}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+    volumes:
+      - ./monitor.py:/monitor.py:ro
+      - ./certs:/certs:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+
+  # Page review: classifies queued pages with a local LLM (OpenAI-compatible,
+  # e.g. LM Studio) and reports to Home Assistant over MQTT.
   worker:
+    profiles: [review]
     image: python:3.12-alpine
     container_name: fort-review-worker
     restart: unless-stopped
-    networks: [lan]
     user: "1000:10"
     command: ["python", "-u", "/worker.py"]
     environment:
-      LLM_URL: http://192.168.1.20:1234/v1/chat/completions
-      LLM_MODEL: gemma-4-31b-it
-      MQTT_HOST: 192.168.1.10
-      SUMMARY_AT: "19:30"
-      RETENTION_DAYS: "30"
+      LLM_URL: ${LLM_URL:?set LLM_URL in .env}
+      LLM_MODEL: ${LLM_MODEL:-gemma-4-31b-it}
+      MQTT_HOST: ${MQTT_HOST:?set MQTT_HOST in .env}
+      SUMMARY_AT: ${REVIEW_SUMMARY_AT:-19:30}
+      RETENTION_DAYS: ${REVIEW_RETENTION_DAYS:-30}
     volumes:
       - ./worker.py:/worker.py:ro
       - ./review:/data
@@ -192,24 +133,65 @@ services:
     mem_limit: 128m
     pids_limit: 32
 
-# The relay itself is on the Fort VLAN (isolated by the UCG firewall). The
-# bridge network below still hosts relay-cert and ddns; it stays pinned so the
-# NAS's net-shim "fort_relay" table keeps them off the LAN too.
-networks:
-  default:
-    ipam:
-      config:
-        - subnet: 172.22.0.0/16
-  lan: {}
-  # Macvlan on VLAN 40 (docker creates eth0.40). The NAS's switch port carries
-  # all VLANs tagged. Like Caddy's macvlan, the NAS host itself can't reach
-  # this address directly; everything goes through the UCG.
-  fort_vlan:
-    driver: macvlan
-    driver_opts:
-      parent: eth0.40
-    ipam:
-      config:
-        - subnet: 192.168.40.0/24
-          gateway: 192.168.40.1
-          ip_range: 192.168.40.8/29
+  # Kids' search for Fort Chat: SearXNG with strict SafeSearch. Its searches
+  # should leave through the same filtered network as the relay (see the VLAN
+  # overlay). Queried only by the Kids Guard filter, which checks every result.
+  kids-search:
+    profiles: [chat]
+    image: docker.io/searxng/searxng:latest
+    container_name: fort-kids-search
+    restart: unless-stopped
+    ports:
+      - "${KIDS_SEARCH_PORT:-8081}:8080"
+    environment:
+      SEARXNG_BASE_URL: ${KIDS_SEARCH_URL:-http://localhost:8081/}
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+      SEARXNG_CONTACT_URL: mailto:${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+    volumes:
+      - ./search:/etc/searxng
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 128
+
+  # Page reader for Fort Chat: fetches a page a kid links to (public sites
+  # only). Only FETCH_ALLOWED_CLIENTS may call it; the Kids Guard checks the text.
+  kids-fetch:
+    profiles: [chat]
+    image: python:3.12-alpine
+    container_name: fort-kids-fetch
+    restart: unless-stopped
+    ports:
+      - "${KIDS_FETCH_PORT:-8082}:8080"
+    user: "1000:10"
+    command: ["python", "-u", "/kids_fetch.py"]
+    environment:
+      ALLOWED_CLIENTS: ${FETCH_ALLOWED_CLIENTS:?set FETCH_ALLOWED_CLIENTS in .env (the Open WebUI host)}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:?set CONTACT_EMAIL in .env}
+    volumes:
+      - ./kids_fetch.py:/kids_fetch.py:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    pids_limit: 32
+
+  # UniFi only: the content filter's sinkhole never answers from an isolated
+  # VLAN, so blocked names would wait out the 5 s connect timeout. This routes
+  # it as unreachable inside the relay's namespace (holds NET_ADMIN so the
+  # relay needn't). Only speed depends on it.
+  sinkhole-route:
+    profiles: [unifi]
+    image: alpine:3
+    container_name: fort-relay-sinkhole-route
+    restart: unless-stopped
+    network_mode: "service:relay"
+    depends_on: [relay]
+    command: ["sh", "-c", "while true; do ip route replace unreachable ${SINKHOLE_IP:-203.0.113.250}/32; sleep 60; done"]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 16m
+    pids_limit: 16

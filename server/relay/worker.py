@@ -19,9 +19,9 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 DB = os.environ.get("REVIEW_DB", "/data/review.db")
-LLM_URL = os.environ.get("LLM_URL", "http://192.168.1.20:1234/v1/chat/completions")
+LLM_URL = os.environ["LLM_URL"]
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemma-4-31b-it")
-MQTT_HOST = os.environ.get("MQTT_HOST", "192.168.1.10")
+MQTT_HOST = os.environ["MQTT_HOST"]
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 SUMMARY_AT = os.environ.get("SUMMARY_AT", "19:30")  # local time (host /etc/localtime)
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "30"))

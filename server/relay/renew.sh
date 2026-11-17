@@ -1,10 +1,11 @@
 #!/bin/sh
-# Issue/renew the relay.example.com cert once a day (lego only renews when due),
+# Issue/renew the RELAY_DOMAIN cert once a day (lego only renews when due),
 # then hand Envoy (uid 65532) a readable copy via atomic rename so its
 # watched_directory picks up renewals without a restart.
 set -u
 : "${LEGO_EMAIL:?set LEGO_EMAIL in .env}"
-D=relay.example.com
+: "${RELAY_DOMAIN:?set RELAY_DOMAIN in .env}"
+D=$RELAY_DOMAIN
 while true; do
   if /lego run --path /data --accept-tos --email "$LEGO_EMAIL" \
        --key-type ec256 --dns route53 --dns.propagation.wait 45s --domains $D; then

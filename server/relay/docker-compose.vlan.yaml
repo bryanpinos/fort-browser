@@ -1,0 +1,43 @@
+# VLAN overlay (recommended): gives the relay, kids-search and kids-fetch their
+# own addresses on an isolated VLAN, via macvlan on the host's VLAN interface.
+# Your gateway then applies a kids' content-filter policy to everything they
+# fetch, and its firewall keeps that VLAN away from your LAN. Setup and the
+# firewall rules: docs/relay.md#vlan.
+#
+# Enable with COMPOSE_FILE=docker-compose.yaml:docker-compose.vlan.yaml in .env.
+# The router's port forward then targets RELAY_IP:8443 (no host port is published).
+services:
+  relay:
+    ports: !reset []
+    networks:
+      fort_vlan:
+        ipv4_address: ${RELAY_IP:?set RELAY_IP}
+        mac_address: ${RELAY_MAC:?set RELAY_MAC (any locally administered MAC, e.g. 02:46:6f:72:74:0a)}
+    dns: ["${VLAN_GATEWAY:?set VLAN_GATEWAY}"]
+  kids-search:
+    ports: !reset []
+    networks:
+      fort_vlan:
+        ipv4_address: ${KIDS_SEARCH_IP:?set KIDS_SEARCH_IP}
+        mac_address: ${KIDS_SEARCH_MAC:?set KIDS_SEARCH_MAC}
+    dns: ["${VLAN_GATEWAY}"]
+    environment:
+      SEARXNG_BASE_URL: http://${KIDS_SEARCH_IP}:8080/
+  kids-fetch:
+    ports: !reset []
+    networks:
+      fort_vlan:
+        ipv4_address: ${KIDS_FETCH_IP:?set KIDS_FETCH_IP}
+        mac_address: ${KIDS_FETCH_MAC:?set KIDS_FETCH_MAC}
+    dns: ["${VLAN_GATEWAY}"]
+
+networks:
+  fort_vlan:
+    driver: macvlan
+    driver_opts:
+      parent: ${VLAN_PARENT:?set VLAN_PARENT (the host's VLAN interface, e.g. eth0.40)}
+    ipam:
+      config:
+        - subnet: ${VLAN_SUBNET:?set VLAN_SUBNET}
+          gateway: ${VLAN_GATEWAY}
+          ip_range: ${VLAN_IP_RANGE:?set VLAN_IP_RANGE (a small range for these containers, outside DHCP)}

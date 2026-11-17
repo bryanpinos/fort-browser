@@ -9,9 +9,10 @@
 #
 # Route order matters:
 #   1. wrong/missing token          -> 407
-#   1b. kids-chat.example.com:443     -> Caddy (192.168.1.5) for Fort Chat, the
-#       kids' Open WebUI. The only internal name allowed; Caddy refuses every
-#       other host from the Fort VLAN, since a tunnel's inner host is opaque here.
+#   1b. KIDS_CHAT_HOST:443 (optional) -> a fixed address for Fort Chat, the
+#       kids' Open WebUI. The only internal name allowed; the proxy in front of
+#       it must refuse every other host from the relay, since a tunnel's inner
+#       host is opaque here.
 #   2. private / internal targets   -> 403 (a leaked token must not reach the LAN)
 #      and ANY bare IP address: names only, so DNS-based filtering (Kids
 #      policy, SafeSearch, ad blocking) can't be bypassed by typing an IP
@@ -24,9 +25,11 @@
 #      this name? Fort asks after a failed page load, to show its block page.
 # The authority deny-list can't see what a public name resolves to, so a name
 # pointing at a private IP gets through. Before exposing this to the internet,
-# also isolate the relay's egress at the network layer (own VLAN + firewall).
+# also isolate the relay's egress at the network layer (own VLAN + firewall,
+# see docs/relay.md).
 #
-# CHANGE_ME_TOKEN is replaced at deploy time; never commit the real token.
+# Template: render.py fills the double-brace placeholders from .env and the token file and writes
+# envoy.yaml. Never commit a rendered envoy.yaml (it contains the token).
 
 # Admin API on loopback only: reachable just from this container's network
 # namespace, i.e. the fort-relay-monitor sidecar (network_mode service:relay).
@@ -114,25 +117,27 @@ static_resources:
                   connect_matcher: {}
                   headers:
                   - name: x-fort-token
-                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                    string_match: {exact: "{{RELAY_TOKEN}}"}
                     invert_match: true
                     treat_missing_header_as_empty: true
                 direct_response: {status: 407}
+              # {{#KIDS_CHAT}}
               - match:
                   connect_matcher: {}
                   headers:
                   - name: ":authority"
-                    string_match: {exact: "kids-chat.example.com:443"}
+                    string_match: {exact: "{{KIDS_CHAT_HOST}}:443"}
                 route:
                   cluster: kids_chat
                   upgrade_configs: [{upgrade_type: CONNECT, connect_config: {}}]
+              # {{/KIDS_CHAT}}
               - match:
                   connect_matcher: {}
                   headers:
                   - name: ":authority"
                     string_match:
                       safe_regex:
-                        regex: "^(\\[.*\\]|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|(0|10|127)\\.[0-9.]+|192\\.168\\.[0-9.]+|172\\.(1[6-9]|2[0-9]|3[01])\\.[0-9.]+|169\\.254\\.[0-9.]+|100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9.]+|[^.:]+|(.*\\.)?(pinos\\.dev|local|lan|internal|home\\.arpa|localhost|ts\\.net)\\.?):[0-9]+$"
+                        regex: "^(\\[.*\\]|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|(0|10|127)\\.[0-9.]+|192\\.168\\.[0-9.]+|172\\.(1[6-9]|2[0-9]|3[01])\\.[0-9.]+|169\\.254\\.[0-9.]+|100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9.]+|[^.:]+|(.*\\.)?({{INTERNAL_DOMAINS_REGEX}}local|lan|internal|home\\.arpa|localhost|ts\\.net)\\.?):[0-9]+$"
                 direct_response: {status: 403}
               - match:
                   connect_matcher: {}
@@ -150,7 +155,7 @@ static_resources:
                   path: "/fort/health"
                   headers:
                   - name: x-fort-token
-                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                    string_match: {exact: "{{RELAY_TOKEN}}"}
                 direct_response: {status: 200, body: {inline_string: "ok"}}
               # Page/navigation events from Fort for parental review. Reaching
               # this needs a valid client cert; Envoy stamps the device ID from
@@ -160,7 +165,7 @@ static_resources:
                   path: "/fort/ingest"
                   headers:
                   - name: x-fort-token
-                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                    string_match: {exact: "{{RELAY_TOKEN}}"}
                   - name: ":method"
                     string_match: {exact: "POST"}
                 route: {cluster: fort_ingest, timeout: 15s}
@@ -173,7 +178,7 @@ static_resources:
                   path: "/fort/config"
                   headers:
                   - name: x-fort-token
-                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                    string_match: {exact: "{{RELAY_TOKEN}}"}
                   - name: ":method"
                     string_match: {exact: "GET"}
                 route: {cluster: fort_ingest, timeout: 5s}
@@ -187,7 +192,7 @@ static_resources:
                   path: "/fort/blocked"
                   headers:
                   - name: x-fort-token
-                    string_match: {exact: "CHANGE_ME_TOKEN"}
+                    string_match: {exact: "{{RELAY_TOKEN}}"}
                   - name: ":method"
                     string_match: {exact: "GET"}
                 route: {cluster: fort_ingest, timeout: 5s}
@@ -206,8 +211,9 @@ static_resources:
             typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router}
 
   clusters:
-  # Fort Chat via Caddy. Fixed address: the name has no public DNS record, and a
-  # fixed target can't be redirected by DNS.
+  # {{#KIDS_CHAT}}
+  # Fort Chat. Fixed address: the name needn't resolve anywhere, and a fixed
+  # target can't be redirected by DNS.
   - name: kids_chat
     connect_timeout: 5s
     type: STATIC
@@ -215,7 +221,8 @@ static_resources:
       cluster_name: kids_chat
       endpoints:
       - lb_endpoints:
-        - endpoint: {address: {socket_address: {address: 192.168.1.5, port_value: 443}}}
+        - endpoint: {address: {socket_address: {address: {{KIDS_CHAT_UPSTREAM_IP}}, port_value: {{KIDS_CHAT_UPSTREAM_PORT}}}}}
+  # {{/KIDS_CHAT}}
   - name: fort_ingest
     connect_timeout: 2s
     type: STATIC

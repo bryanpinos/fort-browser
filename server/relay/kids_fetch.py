@@ -13,6 +13,7 @@ import urllib.request
 
 PORT = int(os.environ.get("PORT", "8080"))
 ALLOWED_CLIENTS = set(filter(None, os.environ.get("ALLOWED_CLIENTS", "").split(",")))
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
 MAX_BYTES = 2_000_000
 MAX_TEXT = 6000
 TIMEOUT = 10
@@ -78,7 +79,8 @@ def fetch(url):
     if not public_host(u.hostname):
         return 403, {"error": "blocked or not a public site"}
     opener = urllib.request.build_opener(NoPrivateRedirects)
-    req = urllib.request.Request(url, headers={"User-Agent": "FortKidsReader/1.0 (+mailto:fortsafebrowser@gmail.com)",
+    agent = "FortKidsReader/1.0" + (f" (+mailto:{CONTACT_EMAIL})" if CONTACT_EMAIL else "")
+    req = urllib.request.Request(url, headers={"User-Agent": agent,
                                                "Accept": "text/html,text/plain"})
     try:
         with opener.open(req, timeout=TIMEOUT) as r:
@@ -123,5 +125,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if not ALLOWED_CLIENTS:
+        sys.exit("set ALLOWED_CLIENTS (the Open WebUI host's address): refusing to run open to everyone")
     print(f"fort-kids-fetch on :{PORT}, clients {sorted(ALLOWED_CLIENTS) or 'any'}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

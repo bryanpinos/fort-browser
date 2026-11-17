@@ -12,6 +12,6 @@ resources:
     trusted_ca: {filename: /ca/fort-ca.crt}
     match_typed_subject_alt_names:
     - san_type: URI
-      matcher: {exact: "spiffe://pinos.dev/fort/device/kid1-ipad"}
+      matcher: {exact: "spiffe://example.com/fort/device/kid1-ipad"}
     - san_type: URI
-      matcher: {exact: "spiffe://pinos.dev/fort/device/kid2-ipad"}
+      matcher: {exact: "spiffe://example.com/fort/device/kid2-ipad"}

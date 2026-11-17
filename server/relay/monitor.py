@@ -15,7 +15,7 @@ import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 
-MQTT_HOST = os.environ.get("MQTT_HOST", "192.168.1.10")
+MQTT_HOST = os.environ["MQTT_HOST"]
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 ADMIN = "http://127.0.0.1:9901"
 CERT = "/certs/relay.crt"

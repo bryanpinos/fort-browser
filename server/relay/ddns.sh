@@ -1,8 +1,8 @@
 #!/bin/bash
-# Keep relay.example.com pointed at this home's public IPv4 (Route 53 A record).
+# Keep RELAY_DOMAIN pointed at this home's public IPv4 (Route 53 A record).
 # Touches only that one record, and only when the IP actually changes.
 set -u
-NAME=relay.example.com
+NAME=${RELAY_DOMAIN:?set RELAY_DOMAIN in .env}
 ZONE=${AWS_HOSTED_ZONE_ID:?}
 private='^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)'
 while true; do

@@ -24,7 +24,9 @@ from urllib.parse import parse_qs, urlsplit
 
 DB = os.environ.get("REVIEW_DB", "/data/review.db")
 PORT = int(os.environ.get("INGEST_PORT", "8081"))
-DEVICE_PREFIX = "spiffe://pinos.dev/fort/device/"
+# Envoy stamps x-fort-device with the client cert's URI SAN:
+# spiffe://<your trust domain>/fort/device/<device-id>
+DEVICE_SAN = re.compile(r"^spiffe://[A-Za-z0-9.-]+/fort/device/([A-Za-z0-9._-]{1,64})$")
 MAX_BODY = 512 * 1024
 MAX_EVENTS = 200
 LIMITS = {"url": 2048, "title": 300, "text": 4000, "reason": 100}
@@ -152,10 +154,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/fort/ingest":
             return self.reply(404)
-        device = self.headers.get("x-fort-device", "")
-        if not device.startswith(DEVICE_PREFIX) or len(device) > 200:
+        m = DEVICE_SAN.match(self.headers.get("x-fort-device", ""))
+        if not m:
             return self.reply(403)
-        device = device[len(DEVICE_PREFIX):]
+        device = m.group(1)
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -197,16 +199,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parts = urlsplit(self.path)
-        device = self.headers.get("x-fort-device", "")
-        if not device.startswith(DEVICE_PREFIX):
+        m = DEVICE_SAN.match(self.headers.get("x-fort-device", ""))
+        if not m:
             return self.reply(404)
+        device = m.group(1)
         if parts.path == "/fort/config":
             try:
-                record_status(device[len(DEVICE_PREFIX):], self.headers)
+                record_status(device, self.headers)
             except sqlite3.Error as e:
                 print(f"status not recorded: {e}", flush=True)
             try:
-                config = home_config(device[len(DEVICE_PREFIX):])
+                config = home_config(device)
             except (OSError, ValueError) as e:
                 # A broken file must not reach the iPads; they keep their last good config.
                 print(f"home config error: {e}", flush=True)

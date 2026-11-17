@@ -9,9 +9,7 @@ use_default_settings:
       - bing
       - brave
       - wikipedia
-general:
-  # Wikipedia's API asks for a contact in the User-Agent.
-  contact_url: mailto:fortsafebrowser@gmail.com
+# Contact for Wikipedia's API: SEARXNG_CONTACT_URL, set from CONTACT_EMAIL in .env.
 server:
   limiter: false
   image_proxy: false
