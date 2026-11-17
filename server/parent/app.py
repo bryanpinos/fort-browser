@@ -3,8 +3,8 @@
 Shows each kid's browsing (from the relay's review database) and Fort Chat
 conversations (from the kids' Open WebUI), and edits the home config the relay
 serves to the iPads (config/fort.json + config/devices/<device>.json), behind
-passkey sign-in. Runs on the NAS; Caddy serves it as https://parent.example.com and
-refuses the kids' VLAN.
+passkey sign-in. Serve it over HTTPS on its own name, behind a reverse proxy
+that refuses the kids' network (docs/parent-console.md).
 
 Sign-in: passkeys only (WebAuthn). The first passkey is added with a one-time
 setup code: `docker exec fort-parent python /app/app.py setup-code`.
@@ -20,11 +20,12 @@ from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyCredentialDescriptor,
                                       ResidentKeyRequirement, UserVerificationRequirement)
 
-RP_ID = os.environ.get("RP_ID", "parent.example.com")
-ORIGIN = os.environ.get("ORIGIN", "https://parent.example.com")
+RP_ID = os.environ["RP_ID"]          # the console's host name, e.g. parent.example.com
+ORIGIN = os.environ["ORIGIN"]        # e.g. https://parent.example.com
+HA_ORIGIN = os.environ.get("HA_ORIGIN", "")  # optional: Home Assistant, to show the console in its sidebar
 DATA = os.environ.get("DATA_DB", "/data/parent.db")
 REVIEW_DB = os.environ.get("REVIEW_DB", "/review/review.db")
-OWUI_URL = os.environ.get("OWUI_URL", "http://192.168.1.20:3001").rstrip("/")
+OWUI_URL = os.environ.get("OWUI_URL", "").rstrip("/")  # the kids' Open WebUI; empty hides Fort Chat
 OWUI_KEY = os.environ.get("OWUI_KEY", "")
 KIDS = json.loads(os.environ.get("KIDS", "[]"))  # [{"id","name","device","chat_user"}]
 PORT = int(os.environ.get("PORT", "8080"))
@@ -139,6 +140,8 @@ _chat_users = {}
 
 
 def chat_user_id(k):
+    if not OWUI_URL:
+        return None
     if k["chat_user"] not in _chat_users:
         users = owui("/api/v1/users/").get("users", [])
         for u in users:
@@ -332,7 +335,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors https://ha.example.com 'self'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'self'" + (f" {HA_ORIGIN}" if HA_ORIGIN else ""))
         for k, v in headers:
             self.send_header(k, v)
         self.end_headers()

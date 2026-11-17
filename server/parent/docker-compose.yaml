@@ -1,6 +1,6 @@
-# Fort Parent: the parents' console (https://parent.example.com via Caddy).
-# .env (mode 600, never committed) holds OWUI_KEY (Fort Chat admin API key)
-# and KIDS (JSON list: id, name, device, chat_user).
+# Fort Parent: the parents' console. Guide: docs/parent-console.md.
+# .env (mode 600, never committed; see .env.example): RP_ID, ORIGIN, paths to
+# the relay's review/config folders, KIDS, and optionally OWUI_URL + OWUI_KEY.
 services:
   parent:
     build: .
@@ -8,17 +8,14 @@ services:
     container_name: fort-parent
     restart: unless-stopped
     ports:
-      - "8094:8080"
+      - "${PARENT_PORT:-8094}:8080"
     env_file: .env
     environment:
-      RP_ID: parent.example.com
-      ORIGIN: https://parent.example.com
       REVIEW_DB: /review/review.db
-      OWUI_URL: http://192.168.1.20:3001
     volumes:
       - ./data:/data
-      - /volume1/docker/fort-relay/review:/review   # read only in code (SQLite WAL needs the dir writable)
-      - /volume1/docker/fort-relay/config:/homeconfig  # home config the relay serves to the iPads
+      - ${RELAY_DIR:?set RELAY_DIR (the relay stack folder)}/review:/review   # read only in code (SQLite WAL needs the dir writable)
+      - ${RELAY_DIR}/config:/homeconfig   # home config the relay serves to the iPads
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

@@ -28,7 +28,7 @@ function editor(key, v) {
   if (key === 'parentPINHash') return `<input type="password" inputmode="numeric" data-k="pin" placeholder="${v ? 'Leave blank to keep the current PIN' : 'New PIN (4–8 digits)'}" data-has="${v ? 1 : 0}">`;
   return `<label class="switch" style="margin:0"><input type="checkbox" data-k="${key}" ${v ? 'checked' : ''}> ${key === 'reviewPages' ? 'Review pages' : 'Strict'}</label>`;
 }
-const favRow = f => `<div class="fav"><input type="text" placeholder="Name" value="${esc(f?.name || '')}" maxlength="40"><input type="url" placeholder="kids-chat.example.com" value="${esc(f?.url || '')}"><button data-rmfav>✕</button></div>`;
+const favRow = f => `<div class="fav"><input type="text" placeholder="Name" value="${esc(f?.name || '')}" maxlength="40"><input type="url" placeholder="pbskids.org" value="${esc(f?.url || '')}"><button data-rmfav>✕</button></div>`;
 
 function render() {
   const st = S.state, everyone = st.everyone, isKid = S.scope !== 'everyone';
