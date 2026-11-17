@@ -123,6 +123,7 @@ services:
       MQTT_HOST: ${MQTT_HOST:?set MQTT_HOST in .env}
       SUMMARY_AT: ${REVIEW_SUMMARY_AT:-19:30}
       RETENTION_DAYS: ${REVIEW_RETENTION_DAYS:-30}
+      CHILD_AGE: ${REVIEW_CHILD_AGE:-9}
     volumes:
       - ./worker.py:/worker.py:ro
       - ./review:/data

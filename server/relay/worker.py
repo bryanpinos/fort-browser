@@ -25,6 +25,7 @@ MQTT_HOST = os.environ["MQTT_HOST"]
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 SUMMARY_AT = os.environ.get("SUMMARY_AT", "19:30")  # local time (host /etc/localtime)
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "30"))
+CHILD_AGE = int(os.environ.get("CHILD_AGE", "9"))  # the prompt judges pages for a child this age
 ALERT_CONCERN = 2  # concern >= this sends an alert
 
 PREFIX = "fort_review"
@@ -32,12 +33,12 @@ STATUS, STATS, EVENT = f"{PREFIX}/status", f"{PREFIX}/stats", f"{PREFIX}/event"
 DEVICE = {"identifiers": ["fort_review"], "name": "Fort review", "manufacturer": "Fort", "model": "Page review (Gemma)"}
 CATEGORIES = ["ok", "adult", "violence", "self_harm", "drugs_alcohol", "hate", "gambling_scams", "mature_other"]
 
-PROMPT = """You help a parent review web pages their child (about 9 years old) viewed in a supervised browser.
+PROMPT = """You help a parent review web pages their child (about %d years old) viewed in a supervised browser.
 Judge the page from its address, title and visible text. Reply with ONLY a JSON object:
 {"category": one of %s,
- "concern": 0-3 (0 = fine for a 9-year-old, 1 = mildly mature, 2 = a parent should know, 3 = urgent: sexual content, self-harm, contact from strangers, grooming),
+ "concern": 0-3 (0 = fine for a %d-year-old, 1 = mildly mature, 2 = a parent should know, 3 = urgent: sexual content, self-harm, contact from strangers, grooming),
  "summary": "neutral description in at most 20 words"}
-Ordinary news, games, school, shopping and video sites are usually 0 or 1. Do not flag a page just for ads.""" % CATEGORIES
+Ordinary news, games, school, shopping and video sites are usually 0 or 1. Do not flag a page just for ads.""" % (CHILD_AGE, CATEGORIES, CHILD_AGE)
 
 
 # --- minimal MQTT 3.1.1 (QoS 0), same as fort-relay-monitor ---------------
