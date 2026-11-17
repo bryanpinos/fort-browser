@@ -209,6 +209,7 @@ struct ParentSettingsView: View {
             }
             .onAppear {
                 loadDraft()
+                DeviceStatus.refreshDefaultBrowser()
                 isDefaultBrowser = Self.checkDefaultBrowser()
                 if let data = incomingCertificate {
                     incomingCertificate = nil

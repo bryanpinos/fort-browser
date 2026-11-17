@@ -56,6 +56,7 @@ struct FortApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
+                        DeviceStatus.refreshDefaultBrowser()
                         if wasInBackground {
                             wasInBackground = false
                             forwarder.restartAfterSuspension()

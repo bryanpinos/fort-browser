@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_status ON events(status);
 CREATE INDEX IF NOT EXISTS events_device_ts ON events(device, ts);
+CREATE TABLE IF NOT EXISTS device_status (
+    device TEXT PRIMARY KEY,
+    default_browser TEXT,
+    app_version TEXT,
+    updated TEXT NOT NULL
+);
 """
 
 
@@ -82,6 +88,24 @@ def blocked_at_home(host):
     except OSError:
         return False
     return bool(addresses & SINKHOLES)
+
+
+APP_VERSION = re.compile(r"^[0-9A-Za-z .()-]{1,30}$")
+
+
+def record_status(device, headers):
+    """What the iPad reported with its config fetch, for the parents' console."""
+    browser = headers.get("x-fort-default-browser", "")
+    version = headers.get("x-fort-app-version", "")
+    if browser not in ("yes", "no", "unknown") and not APP_VERSION.match(version):
+        return
+    with connect() as db:
+        db.execute("""INSERT INTO device_status (device, default_browser, app_version, updated) VALUES (?,?,?,?)
+                      ON CONFLICT(device) DO UPDATE SET default_browser=excluded.default_browser,
+                      app_version=excluded.app_version, updated=excluded.updated""",
+                   (device, browser if browser in ("yes", "no", "unknown") else None,
+                    version if APP_VERSION.match(version) else None,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds")))
 
 
 def home_config(device):
@@ -177,6 +201,10 @@ class Handler(BaseHTTPRequestHandler):
         if not device.startswith(DEVICE_PREFIX):
             return self.reply(404)
         if parts.path == "/fort/config":
+            try:
+                record_status(device[len(DEVICE_PREFIX):], self.headers)
+            except sqlite3.Error as e:
+                print(f"status not recorded: {e}", flush=True)
             try:
                 config = home_config(device[len(DEVICE_PREFIX):])
             except (OSError, ValueError) as e:

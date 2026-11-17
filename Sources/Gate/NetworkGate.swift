@@ -134,6 +134,7 @@ final class NetworkGate {
         guard let url = Self.relayConfigURL(for: proxy) else { return true }
         var request = URLRequest(url: url)
         if let token = proxy.authToken { request.setValue(token, forHTTPHeaderField: "x-fort-token") }
+        for (name, value) in DeviceStatus.headers() { request.setValue(value, forHTTPHeaderField: name) }
         guard let (data, response) = try? await session.data(for: request),
               let status = (response as? HTTPURLResponse)?.statusCode else { return false }
         if status == 200, !data.isEmpty { homeConfigHandler?(data) }

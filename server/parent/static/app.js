@@ -8,7 +8,7 @@ async function loadKids() {
   $('#kids').innerHTML = kids.map(k => `<div class="card kid ${current === k.id ? 'sel' : ''}" data-id="${esc(k.id)}"><h2>${esc(k.name)}</h2><div class="stats">
     <span>Sites today<br><b>${k.visits_24h}</b></span><span>Blocked today<br><b>${k.blocked_24h ? '⛔ ' + k.blocked_24h : '0'}</b></span>
     <span>Flagged (7 days)<br><b>${k.flagged_7d ? '⚠️ ' + k.flagged_7d : '✓ 0'}</b></span><span>Fort Chat chats<br><b>${k.chats ?? '?'}</b></span></div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">Last seen ${when(k.last_seen)}</p></div>`).join('');
+    <p class="muted" style="margin:8px 0 0;font-size:12px">${k.default_browser === 'yes' ? '✓ Fort is the default browser' : k.default_browser === 'no' ? '⚠️ Fort is not the default browser' : 'Default browser: not reported yet'}${k.app_version ? ' · build ' + esc(k.app_version) : ''}<br>Last seen ${when(k.last_seen)}</p></div>`).join('');
   document.querySelectorAll('.kid').forEach(el => el.onclick = () => { current = el.dataset.id; loadKids(); show(); });
 }
 async function show() {

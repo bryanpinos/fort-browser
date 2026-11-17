@@ -79,4 +79,11 @@ final class HomeConfigTests: XCTestCase {
         let proxy = GateConfig.ProxyConfig(kind: .relay, host: "relay.example.com", port: 8443, authToken: "t")
         XCTAssertEqual(NetworkGate.relayConfigURL(for: proxy)?.absoluteString, "https://relay.example.com:8443/fort/config")
     }
+
+    func testStatusHeadersReportDefaultBrowserAndBuild() {
+        let headers = DeviceStatus.headers(defaultBrowser: "yes", appVersion: "1.0 (6)")
+        XCTAssertEqual(headers["x-fort-default-browser"], "yes")
+        XCTAssertEqual(headers["x-fort-app-version"], "1.0 (6)")
+        XCTAssertTrue(["yes", "no", "unknown"].contains(DeviceStatus.defaultBrowser))
+    }
 }
