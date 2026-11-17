@@ -206,7 +206,9 @@ def discovery(mqtt, devices, announced):
             mqtt.publish(f"homeassistant/sensor/fort_review/{slug(d)}_{key}/config", json.dumps({
                 "name": f"{d} {label}", "unique_id": f"fort_review_{slug(d)}_{key}",
                 "object_id": f"fort_review_{slug(d)}_{key}", "state_topic": STATS,
-                "value_template": "{{ value_json['%s'].%s | default(0) }}" % (d, key),
+                # An iPad with no pages yet today is missing from STATS: look up
+                # both levels with .get so it reads 0 instead of erroring in HA.
+                "value_template": "{{ value_json.get('%s', {}).get('%s', 0) }}" % (d, key),
                 "unit_of_measurement": "pages", "state_class": "total", "icon": icon,
                 "availability_topic": STATUS, "device": DEVICE}), retain=True)
         announced.add(d)
@@ -269,7 +271,10 @@ def main():
                     if not classify_pending(db, mqtt):
                         backoff = time.time() + 120  # LLM down: retry in 2 min
                 stats = today_stats(db)
-                discovery(mqtt, stats.keys(), announced)
+                # Announce every iPad ever seen, not just today's: otherwise an iPad
+                # with nothing yet today keeps a stale sensor config in HA.
+                known = [r[0] for r in db.execute("SELECT DISTINCT device FROM events")]
+                discovery(mqtt, sorted(set(known) | set(stats.keys())), announced)
                 mqtt.publish(STATS, json.dumps(stats), retain=True)
                 now = datetime.now().astimezone()
                 if now.strftime("%H:%M") >= SUMMARY_AT and last_summary != now.date():
