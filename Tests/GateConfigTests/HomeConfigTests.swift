@@ -21,7 +21,7 @@ final class HomeConfigTests: XCTestCase {
 
     func testHomeFieldsReplaceLocalOnes() {
         let store = storeWithRelay()
-        XCTAssertTrue(store.applyHome(json(#"{"denylist":["home.example"],"reviewPages":true,"favorites":[{"name":"Fort Chat","url":"https://kids-chat.example.com"}]}"#)))
+        XCTAssertTrue(store.applyHome(json(#"{"denylist":["home.example"],"reviewPages":true,"favorites":[{"name":"Fort Chat","url":"https://chat.example.com"}]}"#)))
         XCTAssertEqual(store.config.denylist, ["home.example"])
         XCTAssertEqual(store.config.reviewPages, true)
         XCTAssertEqual(store.config.favorites?.first?.name, "Fort Chat")

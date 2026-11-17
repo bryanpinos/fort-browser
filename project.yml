@@ -76,7 +76,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: web
             CFBundleURLSchemes: [http, https]
-          # fort://open?url=kids-chat.example.com, for a Home Screen icon made in Shortcuts.
+          # fort://open?url=pbskids.org, for a Home Screen icon made in Shortcuts.
           - CFBundleURLName: fort
             CFBundleURLSchemes: [fort]
         NSAppTransportSecurity:

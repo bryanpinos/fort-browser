@@ -79,8 +79,12 @@ final class ClientIdentityStoreTests: XCTestCase {
     func testDeviceIDParsing() {
         // GeneralName [6] URI, followed by the next field's SEQUENCE tag (0x30 = "0").
         func der(_ s: String) -> Data { Data([0x30, 0x82, 0x86, UInt8(s.utf8.count)] + Array(s.utf8) + [0x30, 0x0b]) }
-        XCTAssertEqual(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://pinos.dev/fort/device/kid1-ipad")), "kid1-ipad")
-        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://pinos.dev/other/device/x")))
-        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://pinos.dev/fort/device/")))
+        XCTAssertEqual(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://example.com/fort/device/kid1-ipad")), "kid1-ipad")
+        XCTAssertEqual(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://home.example.net/fort/device/Ava.iPad_2")), "Ava.iPad_2",
+                       "any family's trust domain works")
+        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://example.com/other/device/x")))
+        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://example.com/fort/device/")))
+        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe://example.com/fort/device/a/b")))
+        XCTAssertNil(ClientIdentityStore.deviceID(inCertificateDER: der("spiffe:///fort/device/x")), "needs a trust domain")
     }
 }

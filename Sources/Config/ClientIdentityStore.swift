@@ -14,7 +14,7 @@ final class ClientIdentityStore {
 
     struct Info: Equatable {
         var name: String          // certificate subject summary, e.g. "Ava's iPad"
-        var deviceID: String?     // from the spiffe://pinos.dev/fort/device/<id> URI SAN
+        var deviceID: String?     // from the spiffe://<trust domain>/fort/device/<id> URI SAN
         var expires: Date?
     }
 
@@ -136,10 +136,10 @@ final class ClientIdentityStore {
     /// bytes; use that length rather than guessing where the URI ends (the
     /// next field's tag byte can look like an ID character).
     static func deviceID(inCertificateDER der: Data) -> String? {
-        let prefix = Array("spiffe://pinos.dev/fort/device/".utf8)
+        let scheme = Array("spiffe://".utf8)
         let bytes = [UInt8](der)
-        guard bytes.count > prefix.count + 2 else { return nil }
-        for start in 2...(bytes.count - prefix.count) where bytes[start..<start + prefix.count].elementsEqual(prefix) {
+        guard bytes.count > scheme.count + 2 else { return nil }
+        for start in 2...(bytes.count - scheme.count) where bytes[start..<start + scheme.count].elementsEqual(scheme) {
             let length: Int
             if bytes[start - 2] == 0x86 && bytes[start - 1] < 0x80 {
                 length = Int(bytes[start - 1])                       // short form
@@ -149,12 +149,21 @@ final class ClientIdentityStore {
                 continue
             }
             let end = start + length
-            guard end <= bytes.count, length > prefix.count else { return nil }
-            let id = bytes[(start + prefix.count)..<end]
-            guard id.allSatisfy(isIDByte) else { return nil }
-            return String(decoding: id, as: UTF8.self)
+            guard end <= bytes.count else { continue }
+            if let id = deviceID(inURI: String(decoding: bytes[start..<end], as: UTF8.self)) { return id }
         }
         return nil
+    }
+
+    /// `spiffe://<trust domain>/fort/device/<id>`, for any trust domain (each
+    /// family uses its own); nil for anything else.
+    static func deviceID(inURI uri: String) -> String? {
+        let rest = uri.dropFirst("spiffe://".count)
+        guard uri.hasPrefix("spiffe://"), let marker = rest.range(of: "/fort/device/") else { return nil }
+        let domain = rest[..<marker.lowerBound], id = rest[marker.upperBound...]
+        guard !domain.isEmpty, domain.utf8.allSatisfy({ isIDByte($0) && $0 != UInt8(ascii: "_") }),
+              !id.isEmpty, id.utf8.count <= 64, id.utf8.allSatisfy(isIDByte) else { return nil }
+        return String(id)
     }
 
     private static func isIDByte(_ b: UInt8) -> Bool {

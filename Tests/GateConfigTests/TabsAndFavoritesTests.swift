@@ -91,7 +91,7 @@ final class TabsModelTests: XCTestCase {
 
     func testFortLinksOpenOnlyWebAddresses() {
         func web(_ s: String) -> String? { TabsModel.webLink(fromFortLink: URL(string: s)!)?.absoluteString }
-        XCTAssertEqual(web("fort://open?url=kids-chat.example.com"), "https://kids-chat.example.com")
+        XCTAssertEqual(web("fort://open?url=chat.example.com"), "https://chat.example.com")
         XCTAssertEqual(web("fort://open?url=https%3A%2F%2Fpbskids.org%2Fgames"), "https://pbskids.org/games")
         XCTAssertNil(web("fort://open?url=javascript:alert(1)"))
         XCTAssertNil(web("fort://open?url=file:///etc/passwd"))
