@@ -44,17 +44,18 @@ final class BrowserModel: Identifiable {
         return currentURL?.host ?? "Loading…"
     }
 
-    func load(text: String, homeURL: URL) {
-        guard let url = Self.destination(for: text) else { return }
+    func load(text: String, engine: SearchEngine) {
+        guard let url = Self.destination(for: text, engine: engine) else { return }
         load(url: url)
     }
 
     /// What the address bar should open for `text`: an address if it clearly
-    /// is one, otherwise a Google search (SafeSearch forces strict mode).
+    /// is one, otherwise a search on `engine` (SafeSearch forces strict mode
+    /// on the built-in engines).
     /// "Clearly an address" = an http(s) URL, an IPv4 address, or a dotted
     /// host name ending in a real top-level domain ("minecraft.exe" and
     /// "2.5" are searches, "pbskids.org/games" is an address).
-    static func destination(for text: String) -> URL? {
+    static func destination(for text: String, engine: SearchEngine = .google) -> URL? {
         let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return nil }
         if let url = URL(string: input), let scheme = url.scheme?.lowercased(),
@@ -65,9 +66,7 @@ final class BrowserModel: Identifiable {
            let url = URL(string: "https://" + input), url.host != nil {
             return url
         }
-        var search = URLComponents(string: "https://www.google.com/search")!
-        search.queryItems = [URLQueryItem(name: "q", value: input)]
-        return search.url
+        return engine.searchURL(for: input)
     }
 
     static func looksLikeAddress(_ input: String) -> Bool {

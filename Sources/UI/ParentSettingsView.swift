@@ -20,6 +20,8 @@ struct ParentSettingsView: View {
     @State private var proxyPort = "1080"
     @State private var proxyToken = ""
     @State private var reviewPages = false
+    @State private var engineChoice: EngineChoice = .google
+    @State private var customEngineText = ""
     @State private var favoritesText = ""
     @State private var dataMessage: String?
     @State private var confirmClearAll = false
@@ -107,6 +109,21 @@ struct ParentSettingsView: View {
                     TextField("Blocked hosts, one per line", text: $denyText, axis: .vertical)
                         .lineLimit(3...8).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Toggle("Force strict safe search", isOn: $draft.enforceSafeSearch)
+                    Picker("Search with", selection: $engineChoice) {
+                        ForEach(EngineChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    if engineChoice == .custom {
+                        TextField("https://search.example.com/search?q=%s", text: $customEngineText)
+                            .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        Label("Fort can't force SafeSearch on a custom search engine. Pick one that filters results itself, or block adult sites at home.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote).foregroundStyle(.orange)
+                        if !SearchEngine.isValidCustom(customEngineText.trimmingCharacters(in: .whitespaces)) {
+                            Label("Use an https address with %s where the search words go. Until then, Fort searches with Google.",
+                                  systemImage: "info.circle")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
                 } header: { Text("Sites") } footer: {
                     Text("Subdomains match automatically. Blocked hosts win over allowed hosts.")
                 }
@@ -278,7 +295,8 @@ struct ParentSettingsView: View {
     /// Plain names for the fields a home config can manage.
     static func homeLabels(_ keys: Set<String>) -> String {
         let names = ["favorites": "favorites", "denylist": "blocked sites", "allowlist": "allowed sites",
-                     "enforceSafeSearch": "safe search", "homeURL": "home page", "reviewPages": "page review",
+                     "enforceSafeSearch": "safe search", "searchEngine": "search engine",
+                     "homeURL": "home page", "reviewPages": "page review",
                      "parentPINHash": "parent PIN", "logEndpoint": "log endpoint", "probeURL": "probe URL",
                      "probeIntervalSeconds": "check interval"]
         return keys.map { names[$0] ?? $0 }.sorted().joined(separator: ", ")
@@ -299,6 +317,9 @@ struct ParentSettingsView: View {
         proxyPort = draft.proxy.map { String($0.port) } ?? "1080"
         proxyToken = draft.proxy?.authToken ?? ""
         reviewPages = draft.reviewPages ?? false
+        let engine = SearchEngine(setting: draft.searchEngine)
+        engineChoice = EngineChoice(engine)
+        if case .custom(let template) = engine { customEngineText = template } else { customEngineText = "" }
         favoritesText = FavoritesStore.format(draft.favorites)
         dataMessage = nil
         certMessage = nil
@@ -320,6 +341,7 @@ struct ParentSettingsView: View {
                                      authToken: proxyKind == .relay && !proxyToken.isEmpty ? proxyToken : nil)
             : nil
         cfg.reviewPages = proxyEnabled && proxyKind == .relay && reviewPages ? true : nil
+        cfg.searchEngine = engineChoice.engine(custom: customEngineText).setting
         let parsedFavorites = FavoritesStore.parse(favoritesText)
         cfg.favorites = parsedFavorites.isEmpty ? nil : parsedFavorites
         cfg.allowlist = lines(allowText)
@@ -387,6 +409,39 @@ struct ActivityLogView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .destructiveAction) { Button("Clear") { logger.clearLocal() } }
             }
+        }
+    }
+}
+
+/// The search-engine picker's choices; `.custom` takes its address from a text field.
+enum EngineChoice: CaseIterable, Hashable {
+    case google, bing, duckDuckGo, custom
+
+    init(_ engine: SearchEngine) {
+        switch engine {
+        case .google: self = .google
+        case .bing: self = .bing
+        case .duckDuckGo: self = .duckDuckGo
+        case .custom: self = .custom
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .google: return "Google"
+        case .bing: return "Bing"
+        case .duckDuckGo: return "DuckDuckGo"
+        case .custom: return "Custom…"
+        }
+    }
+
+    /// An invalid custom address saves as Google, the same as Fort would use anyway.
+    func engine(custom: String) -> SearchEngine {
+        switch self {
+        case .google: return .google
+        case .bing: return .bing
+        case .duckDuckGo: return .duckDuckGo
+        case .custom: return SearchEngine(setting: custom)
         }
     }
 }

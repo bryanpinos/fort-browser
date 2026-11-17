@@ -1,6 +1,6 @@
 # Home config
 
-Change settings on every iPad from home: favorites, blocked and allowed sites, the home page, page review, SafeSearch, even the parent PIN. Needs [the relay](relay.md).
+Change settings on every iPad from home: favorites, blocked and allowed sites, the home page, the search engine, page review, SafeSearch, even the parent PIN. Needs [the relay](relay.md).
 
 ## How it works
 - The relay serves `config/fort.json` (every iPad) with `config/devices/<device-id>.json` layered on top (one iPad; its fields replace `fort.json`'s).
@@ -9,12 +9,14 @@ Change settings on every iPad from home: favorites, blocked and allowed sites, t
 - A field you remove from the files goes back to the iPad's own value at the next fetch.
 - **It can never change the relay connection** (`proxy` is always ignored), so a bad file can't cut an iPad off from home.
 - **Invalid files are refused** (broken JSON, wrong types, a home page or favorite that isn't an http(s) address): the relay answers with an error and the iPads keep their last good config.
+- One exception: an unrecognized `searchEngine` doesn't refuse the file. That iPad searches with Google instead, so a typo never stops searching.
 
 ## Editing it
 The easy way is [Fort Parent](parent-console.md)'s Settings page, which validates and keeps every earlier version. By hand:
 ```json
 {
   "reviewPages": true,
+  "searchEngine": "duckduckgo",
   "favorites": [
     {"name": "PBS Kids", "url": "https://pbskids.org"},
     {"name": "Fort Chat", "url": "https://chat.example.com"}

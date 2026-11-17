@@ -109,7 +109,7 @@ struct ContentView: View {
                 .autocorrectionDisabled()
                 .focused($urlFocused)
                 .onSubmit {
-                    model.load(text: model.urlText, homeURL: store.config.homeURL)
+                    model.load(text: model.urlText, engine: SearchEngine(setting: store.config.searchEngine))
                     urlFocused = false
                 }
                 // Like Safari: tapping in selects the whole address, so typing

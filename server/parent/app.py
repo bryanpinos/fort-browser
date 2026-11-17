@@ -221,6 +221,11 @@ def _web_url(v):
     return u.scheme in ("http", "https") and bool(u.hostname) and HOST.match(u.hostname.lower()) is not None
 
 
+def _search_template(v):
+    """A custom search engine: https, a host, and %s where the query goes (same rule as the app)."""
+    return "%s" in v and len(v) <= 500 and v.lower().startswith("https://") and _web_url(v.replace("%s", "q"))
+
+
 def _host_list(v):
     return isinstance(v, list) and len(v) <= 500 and all(isinstance(h, str) and HOST.match(h) for h in v)
 
@@ -234,6 +239,7 @@ VALIDATORS = {
     "homeURL": _web_url,
     "enforceSafeSearch": lambda v: isinstance(v, bool),
     "reviewPages": lambda v: isinstance(v, bool),
+    "searchEngine": lambda v: isinstance(v, str) and (v in ("google", "bing", "duckduckgo") or _search_template(v)),
     "parentPINHash": lambda v: isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v) is not None,
 }
 

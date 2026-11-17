@@ -27,6 +27,11 @@ struct GateConfig: Codable, Equatable {
     /// Rewrite search-engine URLs to force strict safe search.
     var enforceSafeSearch: Bool = true
 
+    /// Where address-bar searches go: "google" (nil, the default), "bing",
+    /// "duckduckgo", or a custom https address with %s for the query
+    /// (no forced safe search). See `SearchEngine`.
+    var searchEngine: String? = nil
+
     /// Page shown on launch and when the Home button is tapped.
     var homeURL: URL = URL(string: "https://www.wikipedia.org")!
 

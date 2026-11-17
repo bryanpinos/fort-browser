@@ -7,9 +7,12 @@ const FIELDS = [
   { key: 'homeURL', title: 'Home page', hint: 'Where the house button goes.' },
   { key: 'reviewPages', title: 'Page review', hint: 'Send each page’s text home for Gemma to review and flag.' },
   { key: 'enforceSafeSearch', title: 'Strict SafeSearch', hint: 'Force strict mode on Google, Bing and DuckDuckGo.' },
+  { key: 'searchEngine', title: 'Search engine', hint: 'Where searches typed in the address bar go. Google if not set.' },
   { key: 'parentPINHash', title: 'Parent PIN', hint: 'The PIN for Parent settings on the iPad. Only a hash is stored.' },
 ];
 const hostOf = s => { s = s.trim().toLowerCase(); if (!s) return ''; try { return new URL(s.includes('://') ? s : 'https://' + s).hostname.replace(/^www\./, 'www.'); } catch { return s; } };
+const ENGINES = { google: 'Google', bing: 'Bing', duckduckgo: 'DuckDuckGo' };
+const validTemplate = s => { try { const u = new URL(s.replace('%s', 'q')); return u.protocol === 'https:' && !!u.hostname && s.includes('%s'); } catch { return false; } };
 const urlOf = s => { s = s.trim(); return s && !s.includes('://') ? 'https://' + s : s; };
 async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
 
@@ -19,12 +22,18 @@ function summary(key, v) {
   if (key === 'denylist' || key === 'allowlist') return v.length ? v.join(', ') : 'none';
   if (key === 'parentPINHash') return 'a PIN is set';
   if (typeof v === 'boolean') return v ? 'on' : 'off';
+  if (key === 'searchEngine') return ENGINES[v] || v;
   return String(v);
 }
 function editor(key, v) {
   if (key === 'favorites') return `<div id="favs">${(v || []).map(favRow).join('')}</div><button data-addfav>+ Add favorite</button>`;
   if (key === 'denylist' || key === 'allowlist') return `<textarea rows="5" data-k="${key}">${esc((v || []).join('\n'))}</textarea>${key === 'allowlist' ? '<p class="warn" data-allowwarn hidden>⚠️ Only the sites listed here will open.</p>' : ''}`;
   if (key === 'homeURL') return `<input type="url" data-k="homeURL" value="${esc(v || 'https://')}">`;
+  if (key === 'searchEngine') { const custom = v && !ENGINES[v];
+    return `<select data-k="engine">${Object.entries(ENGINES).map(([k, n]) => `<option value="${k}" ${(v || 'google') === k ? 'selected' : ''}>${n}</option>`).join('')}<option value="custom" ${custom ? 'selected' : ''}>Custom…</option></select>
+      <div data-custom ${custom ? '' : 'hidden'}><input type="url" data-k="template" placeholder="https://search.example.com/search?q=%s" value="${esc(custom ? v : '')}">
+      <p class="hint">An https address with <code>%s</code> where the search words go.</p>
+      <p class="warn">⚠️ Fort can’t force SafeSearch on a custom search engine. Pick one that filters results itself, or block adult sites at home.</p></div>`; }
   if (key === 'parentPINHash') return `<input type="password" inputmode="numeric" data-k="pin" placeholder="${v ? 'Leave blank to keep the current PIN' : 'New PIN (4–8 digits)'}" data-has="${v ? 1 : 0}">`;
   return `<label class="switch" style="margin:0"><input type="checkbox" data-k="${key}" ${v ? 'checked' : ''}> ${key === 'reviewPages' ? 'Review pages' : 'Strict'}</label>`;
 }
@@ -45,6 +54,7 @@ function render() {
   const favs = $('#favs'); if (favs) {
     $('[data-addfav]').onclick = () => { favs.insertAdjacentHTML('beforeend', favRow()); wireFavs(); };
     const wireFavs = () => document.querySelectorAll('[data-rmfav]').forEach(b => b.onclick = () => b.closest('.fav').remove()); wireFavs(); }
+  const engine = document.querySelector('[data-k=engine]'); if (engine) engine.onchange = () => document.querySelector('[data-custom]').hidden = engine.value !== 'custom';
   const allow = document.querySelector('[data-k=allowlist]'); if (allow) { const w = () => document.querySelector('[data-allowwarn]').hidden = !allow.value.trim(); allow.oninput = w; w(); }
   $('#save').onclick = save; loadHistory();
 }
@@ -54,6 +64,10 @@ async function collect() {
     const key = sect.dataset.field; if (!sect.querySelector('[data-on]').checked) continue;
     if (key === 'favorites') out.favorites = [...sect.querySelectorAll('.fav')].map(r => { const [n, u] = r.querySelectorAll('input'); return { name: n.value.trim(), url: urlOf(u.value) }; }).filter(f => f.name || f.url !== '');
     else if (key === 'denylist' || key === 'allowlist') out[key] = [...new Set(sect.querySelector('textarea').value.split(/[\n,]/).map(hostOf).filter(Boolean))];
+    else if (key === 'searchEngine') { const choice = sect.querySelector('[data-k=engine]').value;
+      if (choice !== 'custom') out.searchEngine = choice;
+      else { const t = sect.querySelector('[data-k=template]').value.trim();
+        if (!validTemplate(t)) throw new Error('The custom search engine needs an https address with %s where the search words go.'); out.searchEngine = t; } }
     else if (key === 'homeURL') out.homeURL = urlOf(sect.querySelector('.body input').value);
     else if (key === 'parentPINHash') { const pin = sect.querySelector('.body input').value.trim();
       if (pin) { if (!/^\d{4,8}$/.test(pin)) throw new Error('The PIN must be 4 to 8 digits.'); out.parentPINHash = await sha256(pin); }

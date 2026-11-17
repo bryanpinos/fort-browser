@@ -11,9 +11,10 @@ Fort works without any server: install it, set a PIN, and it's a filtered browse
 1. Open Fort, tap the gear, and set a **Parent PIN**.
 2. **Sites:** add blocked sites (one per line; subdomains are included), or list allowed sites to allow *only* those. A fresh install starts with a small block list of adult and gambling sites.
 3. **Force strict safe search** is on by default (Google, Bing, DuckDuckGo).
-4. **Favorites:** one per line, address then name, e.g. `pbskids.org PBS Kids`. Kids can star their own too.
-5. **Home page**: where the house button goes.
-6. Tap **Save**.
+4. **Search with** picks where address-bar searches go: Google (the default), Bing, DuckDuckGo, or a custom engine (an https address with `%s` where the search words go, e.g. `https://search.example.com/search?q=%s`). Fort can only force strict safe search on the three built-in engines, so choose a custom one that filters results itself.
+5. **Favorites:** one per line, address then name, e.g. `pbskids.org PBS Kids`. Kids can star their own too.
+6. **Home page**: where the house button goes.
+7. Tap **Save**.
 
 ## Lock down the iPad (Screen Time)
 Fort can only protect what goes through it. In **Settings › Screen Time** on the kid's iPad (or from your device with Family Sharing):
@@ -31,6 +32,7 @@ Every setting is one JSON document (`GateConfig`). You can export it, paste it o
 |---|---|
 | `denylist`, `allowlist` | Site names. Blocked wins over allowed; an empty allowlist allows everything else. |
 | `enforceSafeSearch` | Strict mode on Google, Bing and DuckDuckGo. |
+| `searchEngine` | Address-bar searches: `"google"` (or left out), `"bing"`, `"duckduckgo"`, or a custom `"https://…%s…"` address (no forced safe search). An invalid value means Google. |
 | `homeURL` | The home page. |
 | `favorites` | `[{"name": "PBS Kids", "url": "https://pbskids.org"}]` |
 | `proxy` | The relay: `{"kind": "relay", "host": "relay.example.com", "port": 8443, "authToken": "…"}` ([guide](relay.md)). |
