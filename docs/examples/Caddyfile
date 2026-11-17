@@ -1,0 +1,36 @@
+# Example Caddy config for Fort Chat and Fort Parent behind one wildcard
+# certificate. Adjust names and addresses. The important part is the first
+# handler: requests coming from the kids' relay may reach Fort Chat and
+# nothing else, because the relay can't see which site a tunnel asks for.
+*.example.com {
+    tls {
+        dns route53            # or your DNS provider's plugin
+    }
+
+    # Requests from the kids' VLAN (the relay): Fort Chat only.
+    @from_kids_other {
+        remote_ip 192.168.40.0/24
+        not host chat.example.com
+    }
+    handle @from_kids_other {
+        respond "Not available" 403
+    }
+
+    # Fort Chat: the kids' Open WebUI.
+    @chat host chat.example.com
+    handle @chat {
+        reverse_proxy http://192.0.2.20:3001 {
+            flush_interval -1       # stream replies as they're released
+        }
+    }
+
+    # Fort Parent: the parents' console (the block above already refuses the kids).
+    @parent host parent.example.com
+    handle @parent {
+        reverse_proxy http://192.0.2.10:8094
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}

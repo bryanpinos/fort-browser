@@ -1,122 +1,46 @@
-# Fort: Safe Home Browser
+# Fort – Safe Home Browser
 
-**A kids' browser that only works through your home network.**
+**A kids' web browser for iPad that only works through your home network, run on hardware you own.**
 
-Fort is an open-source iOS/iPadOS browser for parents who already run their own
-network: a UniFi/pfSense/Firewalla gateway, a Tailscale or WireGuard tunnel, a
-NextDNS/Pi-hole profile. Instead of shipping yet another cloud filter and a
-subscription, Fort locks the browser to *your* infrastructure:
+Fort is a browser for families who run their own network. Instead of another cloud filter and another subscription, it ties your kids' browsing to your home: your router's content filter, your rules, your hardware. No accounts, no subscription, no telemetry; nothing goes anywhere but to servers you run.
 
-- **Fail-closed gate.** The browser only loads pages while a parent-controlled
-  URL on your tailnet answers. VPN off → blank screen with a "turn on Tailscale" button.
-- **Proxy pin.** Every byte of page traffic can be forced through a proxy at home
-  (`WKWebsiteDataStore.proxyConfigurations`), so your gateway's content filter,
-  DNS rules and logs apply wherever the iPad is.
-- **Allow/deny lists** enforced on navigation *and* compiled into WebKit's
-  content blocker so blocked hosts can't load as sub-resources either.
-- **Strict safe search** re-applied on every Google/Bing/DDG navigation.
-- **Activity log** kept on-device, optionally batched to an endpoint you run.
-- **No account, no cloud, no telemetry.** Config is a JSON blob you paste, fetch
-  from a URL on your NAS, or push via MDM AppConfig.
+- **Fort on its own:** a filtered browser with a PIN-protected parent area: allowed and blocked sites, strict SafeSearch, favorites, tabs, and a friendly block page ("this one stays outside the fort"). Can be the iPad's default browser, so links from other apps get the same checks.
+- **With the relay:** every page goes through your home, so your home filter applies at school, at a friend's house or on a hotspot. Each iPad has its own certificate from your family's own certificate authority, so a stolen password gets nobody in. If home can't be reached, Fort doesn't browse.
+- **Home config:** change favorites, blocked sites and more on every iPad from home.
+- **Page review:** a local AI reads the pages your kids visit and tells you about anything worrying.
+- **Fort Chat:** a kids' chat helper on your own AI hardware (homework, stories, "what rock is this?"), with two safety models checking every message, reply, photo and search result. It fails closed.
+- **Fort Parent:** your console for each kid's browsing and chats and the home config, signed in with passkeys.
 
-Pair it with Screen Time (hide Safari, block app installs, set a passcode) and
-Fort is the only door to the web on the device.
+## Get it
+- **App Store:** *Fort – Safe Home Browser* (iPad)
+- **TestFlight beta:** https://testflight.apple.com/join/BsRg4eQ2
+- **Build from source:** see [Fort on its own](docs/fort-app.md#building)
 
-> Status: early skeleton. It runs, but expect rough edges. Issues and PRs welcome.
+## Guides
+1. [How Fort fits together](docs/overview.md): architecture, data flows, security design
+2. [Fort on its own](docs/fort-app.md): parent settings, Screen Time lockdown, default browser, config JSON
+3. [The relay](docs/relay.md): certificates, Envoy, port forward, VLAN isolation (UniFi example)
+4. [Home config](docs/home-config.md)
+5. [Page review](docs/page-review.md)
+6. [Fort Chat](docs/fort-chat.md)
+7. [Fort Parent](docs/parent-console.md)
 
-## Why not just use …
+Start with Fort alone; add the relay when you want your home filter everywhere; add the rest if you run a local AI.
 
-| | Fort | Cloud "safe browsers" | DNS filtering alone |
-|---|---|---|---|
-| Works away from home | ✅ via your VPN | ✅ | only on your Wi‑Fi (unless DoH profile) |
-| Who holds the logs | you | the vendor | you / the DNS vendor |
-| Subscription | none | $30–60/yr | free–$20/yr |
-| Enforced by | your network | their cloud | DNS only |
+## In this repository
+| Path | What |
+|---|---|
+| `Sources/`, `Tests/`, `project.yml` | The iPad app (Swift/SwiftUI around WKWebView; [XcodeGen](https://github.com/yonaskolb/XcodeGen) project) |
+| `server/relay/` | The relay: Envoy template, compose files, home-config/ingest service, page-review worker, kids' search and page reader, certificate scripts |
+| `server/chat-guard/` | The Kids Guard filter for Open WebUI, `configure.py`, the evaluation set and tests |
+| `server/parent/` | Fort Parent, the parents' console |
+| `docs/` | The guides |
 
-## Requirements
+## Privacy
+Fort sends nothing to its developer. See the [privacy policy](https://github.com/bryanpinos/bryanpinos/blob/main/fort-privacy.md).
 
-- Xcode 16+, iOS/iPadOS 17+
-- An Apple Developer account (free works for 7-day installs; paid for 1-year)
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
-- Something at home the iPad can reach only over your VPN (the `server/` folder
-  gives you a probe, a proxy and a log collector in one `docker compose up`)
-
-## Build
-
-```bash
-git clone https://github.com/<you>/fort
-cd fort
-# edit project.yml: bundleIdPrefix and DEVELOPMENT_TEAM
-xcodegen generate
-open Fort.xcodeproj
-```
-
-Select your team under Signing & Capabilities, pick the iPad, Run.
-
-## Home side
-
-```bash
-cd server
-# edit probe/fort.json: replace 100.0.0.1 with the NAS's Tailscale IP
-docker compose up -d
-```
-
-| Service | Port | Purpose |
-|---|---|---|
-| probe | 8088 | `GET /ok` → 200; also serves `/fort.json` for one-URL device setup |
-| proxy | 3128 | Squid HTTP CONNECT proxy; only accepts tailnet/LAN clients |
-| logs  | 8089 | `POST /log` collector, `GET /` to eyeball the last 200 entries |
-
-Bind the ports to the host's tailnet address (`100.x.y.z:8088:80`) if the box
-also sits on a network you don't fully trust.
-
-## First-run on the iPad
-
-1. Install Tailscale, sign the iPad into your tailnet (a tag-only node with
-   an ACL that reaches just the NAS is ideal).
-2. Open Fort → gear icon → **Import / export → Config URL** →
-   `http://<nas-tailnet-ip>:8088/fort.json` → Fetch → Save.
-3. Set a parent PIN.
-4. Screen Time: Content & Privacy → Allowed Apps → Safari **off**;
-   iTunes & App Store Purchases → Installing Apps **Don't Allow**, Deleting Apps
-   **Don't Allow**; set a Screen Time passcode.
-
-## Config reference
-
-```jsonc
-{
-  "probeURL": "http://100.0.0.1:8088/ok",   // null disables the gate
-  "probeIntervalSeconds": 15,
-  "proxy": { "kind": "http", "host": "100.0.0.1", "port": 3128 }, // or "socks5"; null = direct
-  "allowlist": [],                           // non-empty = only these hosts (+subdomains)
-  "denylist": ["tiktok.com"],                // always blocked, wins over allowlist
-  "enforceSafeSearch": true,
-  "homeURL": "https://www.wikipedia.org",
-  "logEndpoint": "http://100.0.0.1:8089/log", // null = on-device only
-  "parentPINHash": null                       // sha256 hex; set from the app
-}
-```
-
-MDM users: push the same JSON as a string under the `config` key in managed
-app configuration; the in-app settings become read-only.
-
-## What Fort does *not* do
-
-- It can't filter inside other apps. Screen Time's web filter covers WebKit
-  views in other apps; your DNS filter covers everything else.
-- It can't stop a kid who has the Screen Time passcode. Keep it off the iPad.
-- Signing: a Developer-signed build expires yearly (7 days on a free account).
-  Re-run from Xcode before it lapses, or ship via TestFlight / the App Store.
-
-## Roadmap
-
-- [ ] QR-code config import
-- [ ] Per-kid profiles / time windows
-- [ ] Family Controls entitlement so Fort can shield Safari and other apps itself
-- [ ] Default-browser entitlement
-- [ ] Hardened App Store build with a reviewer-friendly demo config
-- [ ] macOS (Chromium-based) sibling
+## Contributing and contact
+Issues and pull requests welcome. Questions: fortsafebrowser@gmail.com.
 
 ## License
-
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
