@@ -13,10 +13,9 @@ policy source is the parent's own infrastructure (Tailscale/WireGuard tunnel,
 UniFi/pfSense gateway, NextDNS/Pi-hole), not a vendor cloud. No account, no
 subscription, no telemetry to anyone but the parent.
 
-Owner: Bryan (fortsafebrowser@gmail.com). MIT licensed. Paid Apple Developer account.
-First deployment target: a family's iPads, locked down
-with Screen Time (Safari hidden, app installs/deletes blocked), so Fort is the
-only browser on the device.
+MIT licensed. Contact: fortsafebrowser@gmail.com. Built for iPads locked down
+with Screen Time (Safari hidden, app installs and deletions blocked), so Fort is
+the only browser on the device. iPad only (`TARGETED_DEVICE_FAMILY` 2).
 
 ## Hard constraints
 - **WebKit only.** US App Store guideline 2.5.6 requires WebKit; alternative
@@ -37,11 +36,17 @@ only browser on the device.
   the public contract: JSON pasted in-app, fetched from a URL, or pushed via
   MDM AppConfig (`com.apple.configuration.managed` → `config` key, JSON string).
   Changing field names is a breaking change; add fields with defaults.
-- `Config/ConfigStore.swift` — precedence: managed config > UserDefaults > defaults.
-  SHA-256 parent PIN. Import from paste/URL, export via ShareLink.
-- `Gate/NetworkGate.swift` — polls `probeURL`; only 2xx = connected. If
-  `probeURL` is nil the gate is `.open` (plain filtered browser mode, also what
-  an App Store reviewer would see).
+- `Config/ConfigStore.swift` — precedence: MDM managed config > home config
+  (from the relay, fields replace local ones; `proxy` always ignored) > local
+  (UserDefaults) > defaults (`GateConfig.default`: starter block list and
+  favorites). SHA-256 parent PIN. Import from paste/URL, export via ShareLink.
+- `Gate/NetworkGate.swift` — with a relay, checks `/fort/health` through it and
+  fetches the home config (`/fort/config`) on connect and every 15 minutes;
+  otherwise polls `probeURL` (only 2xx = connected); with neither the gate is
+  `.open` (plain filtered browser, also what App Review sees). Also answers
+  "is this blocked at home?" via `/fort/blocked` after a failed page load.
+- `Config/DeviceStatus.swift` — default-browser status and build, sent with
+  the home-config fetch for the parents' console.
 - `Browser/TabsModel.swift` — Fort's tabs (max 8, restored on relaunch;
   `-fort.noTabRestore YES` in UI tests). Builds every tab's WKWebView with the
   same safety setup; sets the proxy on the shared default data store.
@@ -67,87 +72,55 @@ only browser on the device.
 - `Browser/BrowserModel.swift` — observable chrome state; owns a weak WKWebView ref.
 - `Logging/ActivityLogger.swift` — 500-entry local ring buffer plus batched
   JSON POST to `logEndpoint` every 30s (retries on failure).
-- `UI/` — `ContentView` (address bar + blur/overlay gate), `GateOverlay`
-  ("Open Tailscale" via `tailscale://` URL scheme + "Check again"),
-  `PINPromptView`, `ParentSettingsView` (form that round-trips GateConfig),
-  `ActivityLogView`.
-- `App/FortApp.swift` — wires the three observables into the environment;
-  gate starts/stops with scene phase; logs flush on background.
+- `UI/` — `ContentView` (address bar, tab strip, gate overlay, block page),
+  `BlockedPageView`, `StartPageView`, `TabStrip`, `PINPromptView`,
+  `ParentSettingsView` (form that round-trips GateConfig), `ActivityLogView`.
+- `App/FortApp.swift` — wires the observables into the environment; builds
+  `TabsModel` only once the scene is up (a WKWebView created before
+  UIApplication runs crashes on the first scroll); rebuilds the relay
+  forwarder after a real trip to the background (iOS leaves a suspended
+  app's loopback listener looking alive with a dead socket).
+- Links: `http`/`https` from other apps (Fort is a default-browser candidate)
+  and `fort://open?url=<address>` (for Shortcuts Home Screen icons) all go
+  through `TabsModel.openIncoming`, i.e. the same checks as a typed address.
 
 ## Home side (server/)
-`server/relay/` is the production path: Envoy relay (HTTP/2 CONNECT over
-TLS, mutual TLS against a private "Pinos Fort Client CA" with a watched
-device allowlist, token as second check) plus lego for its cert. Deployed on
-the NAS as `fort-relay`; details in the homelab wiki (wiki.example.com).
-The older `docker compose up` stack below gives: nginx probe (`/ok` → 200, also serves `fort.json`
-for one-URL device setup), Squid HTTP CONNECT proxy restricted to
-tailnet/LAN source ranges, and a tiny Python JSONL log collector. Bryan's
-real deployment is on a UGREEN NAS reachable over Tailscale at a 100.x address;
-page traffic exits his UniFi UCG-Fiber so its content filter applies.
+Setup guides for each piece are in `docs/`. Each server component reads its
+settings from a `.env` (see its `.env.example`); keep home-specific values out
+of the code.
+- `server/relay/` — the relay: Envoy (HTTP/2 CONNECT over TLS, mutual TLS
+  against the family's own client CA with a watched device allowlist, token as
+  a second check, private/bare-IP targets refused), rendered from
+  `envoy.template.yaml` by `render.py`. `ingest.py` serves the home config,
+  the "is this blocked?" check and the page-review intake. Optional compose
+  profiles: route53, review (`worker.py`), monitoring, chat (kids-search,
+  kids-fetch), unifi. `docker-compose.vlan.yaml` puts it on an isolated VLAN.
+- `server/chat-guard/` — the Open WebUI filter for Fort Chat (two guard
+  models, fails closed), with its eval and throwaway-instance test rig.
+- `server/parent/` — Fort Parent, the parents' console (passkeys): activity
+  and the home-config editor.
 
 ## State of the code
-Builds clean (Xcode 27.2), unit + XCUITest suites pass (`xcodebuild test
--scheme Fort`), and it has run on a real iPad (10th gen, iOS 27.0.1) through
-the NAS relay with mTLS. Branch `feature/relay-forwarder` holds the relay
-work; `main` is the pre-relay app. Tests inject config with the launch
-argument `-fort.config.json <hex>` (UserDefaults argument domain).
+Builds clean (Xcode 27.2); unit and XCUITest suites pass (`xcodebuild test
+-scheme Fort`). Tests inject config with the launch argument
+`-fort.config.json <hex>` (UserDefaults argument domain). `project.yml` owns
+the entitlements: XcodeGen rewrites `Fort.entitlements` from its
+`entitlements.properties` on every generate, and Xcode silently drops an
+entitlement the provisioning profile lacks, so check a signed build with
+`codesign -d --entitlements :-`.
 
-## Immediate backlog (in order)
-1. `xcodegen generate`, fix compile errors, run on simulator, then on iPad.
-2. Verify the proxy pin really routes WKWebView traffic (check Squid access
-   log) and that a dropped tunnel fails closed rather than falling back.
-3. Verify `NSLocalNetworkUsageDescription` prompt behaviour against a 100.x
-   probe address; if iOS treats CGNAT as local network, make sure the gate
-   handles a denied prompt gracefully (it should read as disconnected).
-4. QR-code config import in ParentSettingsView (AVFoundation; the QR payload
-   is the same JSON).
-5. Unit tests for `GateConfig.allows(host:)`, `SafeSearch.enforced`, and the
-   content-rule JSON generation.
-6. Polish the gate overlay and blocked banner for a 9-year-old audience.
-
-## Next up (relay branch)
-- Register Fort as a handler for `.p12` (`CFBundleDocumentTypes` /
-  `UTImportedTypeDeclarations` for `com.rsa.pkcs-12`) so AirDropping a cert
-  offers "Open in Fort" instead of the iOS profile installer (today: zip it,
-  unzip in Files, then import).
-- "Connected to home" gate check through the relay instead of a direct probe.
-- Kid-friendly message when the Local Network permission was denied.
-
-## Default browser (waiting on Apple)
-Requested 2026-11-03 (ID 65756A2WWF), rejected 2026-11-14 because there was no
-testable build; re-requested 2026-11-16 (ID 2U7T7NM6PD) with the public TestFlight link
-https://testflight.apple.com/join/BsRg4eQ2.
-App side done: http/https in `CFBundleURLTypes`, `TabsModel.openIncoming`
-(web links only; reuses a start-page tab, else a new tab, else the selected
-one), and a "Default browser" row in Parent settings (iOS 18.2+). Remaining:
-Apple grants `com.apple.developer.web-browser` for `dev.pinos.fort`, enable it
-on the App ID, uncomment the key in `Fort.entitlements`. Apple's requirements
-allow parental-control browsers to restrict navigation. Never add the photo
-library, always-location, HomeKit, background-Bluetooth or Health usage
-keys: browsers with the entitlement are rejected for them.
-
-## Backlog, in order (agreed 2026-11-15)
-1. **DONE 2026-11-15. Pictures in Fort Chat:** kids photograph rocks, bugs and so on for Gemma. The guard
-   checks every image with Shieldstral (Qwen3Guard is text-only) and refuses on any error;
-   Fort gets `NSCameraUsageDescription` (allowed for default browsers) in a new TestFlight build.
-2. **DONE 2026-11-15. Web search in Fort Chat:** kids-only SearXNG `fort-kids-search` at
-   192.168.40.11 on the Fort VLAN (Kids content filter + SafeSearch), queried by the guard
-   itself, never by Open WebUI; every result is checked and unsafe ones dropped.
-3. **DONE 2026-11-15 (build 3, 7b3d0af). Home control plane:** relay route `/fort/config` (mTLS + token) serving `fort.json`
-   plus optional `devices/<device-id>.json`; Fort fetches on connect and every ~15 min, keeps
-   the last good config on any error, and shows those fields as "managed from home". Open
-   question: whether it may rotate the relay token (needs old + new accepted during a change).
-- With item 1's build: a `fort://open?url=` link so a Shortcuts Home Screen icon opens Fort
-  straight to Fort Chat (agreed 2026-11-15; same checks as a typed address).
+## Default browser
+Granted by Apple (`com.apple.developer.web-browser`, declared in `project.yml`).
+Apple's requirements allow parental-control browsers to restrict navigation.
+Never add the photo-library, always-location, HomeKit, background-Bluetooth or
+Health usage keys: browsers with the entitlement are rejected for them.
 
 ## Later / not now
 - Family Controls + ManagedSettings entitlement so Fort can shield Safari
   and other apps itself (needs Apple approval).
 - Per-kid profiles, time windows, recreation-hours schedule.
-- App Store submission with a reviewer-safe default config (gate open, sample
-  denylist). Unlisted distribution is the likely route.
-- Publishing the repo and a "would you use this?" post to r/Tailscale,
-  r/UniFi, r/homelab.
+- Whether the home config may rotate the relay token (the relay would have to
+  accept the old and new token during a change).
 
 ## Conventions
 - Commits: conventional-ish, short imperative subject.
