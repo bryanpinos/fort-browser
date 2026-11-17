@@ -32,8 +32,14 @@ targets:
       - Sources
       - path: Resources
         optional: true
+    # XcodeGen rewrites Fort.entitlements from these properties on every
+    # generate, so entitlements live here, not in the file.
     entitlements:
       path: Fort.entitlements
+      properties:
+        # Default browser: granted by Apple 2026-11-16 (request 2U7T7NM6PD) and
+        # enabled on the dev.pinos.fort App ID.
+        com.apple.developer.web-browser: true
     scheme:
       testTargets:
         - GateConfigTests
@@ -43,7 +49,7 @@ targets:
       properties:
         CFBundleDisplayName: Fort
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "4"
+        CFBundleVersion: "5"
         # Only standard HTTPS/TLS: exempt, so uploads skip the export question.
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}

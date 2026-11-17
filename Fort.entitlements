@@ -2,15 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!--
-    Default browser: once Apple grants the managed entitlement for
-    dev.pinos.fort (request: https://developer.apple.com/contact/request/default-browser-entitlement/)
-    and it's enabled on the App ID, uncomment the key below. Adding it before
-    then makes signing fail (the provisioning profile won't include it). The
-    app side is already in place: http/https in Info.plist, incoming links via
-    TabsModel.openIncoming, the status row in Parent settings.
-        <key>com.apple.developer.web-browser</key>
-        <true/>
-    -->
+	<key>com.apple.developer.web-browser</key>
+	<true/>
 </dict>
 </plist>
