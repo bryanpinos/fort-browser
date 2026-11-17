@@ -108,6 +108,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if ALLOWED_CLIENTS and self.client_address[0] not in ALLOWED_CLIENTS:
+            print(f"refused {self.client_address[0]} (not in ALLOWED_CLIENTS)", flush=True)
             return self.reply(403, {"error": "not allowed"})
         parts = urlsplit(self.path)
         if parts.path != "/fetch":

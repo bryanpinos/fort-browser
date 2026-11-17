@@ -2,7 +2,7 @@
 # own addresses on an isolated VLAN, via macvlan on the host's VLAN interface.
 # Your gateway then applies a kids' content-filter policy to everything they
 # fetch, and its firewall keeps that VLAN away from your LAN. Setup and the
-# firewall rules: docs/relay.md#vlan.
+# firewall rules: docs/relay.md, "Isolate it on its own VLAN".
 #
 # Enable with COMPOSE_FILE=docker-compose.yaml:docker-compose.vlan.yaml in .env.
 # The router's port forward then targets RELAY_IP:8443 (no host port is published).

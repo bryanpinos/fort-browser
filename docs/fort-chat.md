@@ -47,7 +47,48 @@ It listens on `127.0.0.1:3001` only, so nobody else can claim the admin account.
 Then, as admin: **Admin Panel › Settings › General › Enable API Keys** (save), and **Settings › Account › API Keys** › create a key. Save it to a file (`chmod 600`).
 
 ## 3. Search and page reading (optional)
-In the relay's `.env`: add `chat` to `COMPOSE_PROFILES`, set `CONTACT_EMAIL`, `SEARXNG_SECRET` (`openssl rand -hex 32`) and `FETCH_ALLOWED_CLIENTS` (the address of the machine running Open WebUI), then `docker compose up -d`. With the VLAN overlay, kids-search and kids-fetch get their own addresses on the kids' VLAN, so your content filter applies to everything they fetch.
+Without these, Fort Chat answers only from what the chat model already knows. With them, the guard can look things up, the way a person would search before answering, and can read a page a kid pastes a link to. Both run in the relay's stack (the `chat` profile), so they reach the web through the same filtered network as the iPads:
+
+| Service | What it is | Used for |
+|---|---|---|
+| `kids-search` (`fort-kids-search`) | [SearXNG](https://docs.searxng.org/), a self-hosted metasearch engine. It asks DuckDuckGo, Bing, Brave and Wikipedia and merges the results. No account or API key. | "Who won the game last night?", "how tall is Mount Everest?" |
+| `kids-fetch` (`fort-kids-fetch`) | A small page reader (`server/relay/kids_fetch.py`). It fetches one page and returns its text. | "What does this page say?" with a link |
+
+**How the guard uses them.** For each kid message, the chat model first answers a one-word yes/no: does this need a web search? If yes, the guard queries SearXNG with strict SafeSearch, checks each result's title and snippet with the safety models, and passes only the ones that pass (5 by default) to the chat model as sources. Links in a kid's message are fetched by kids-fetch, and the page text is checked the same way before the chat model sees it. A result or page that fails is dropped silently. Kids never talk to SearXNG or kids-fetch directly: the relay refuses private addresses, and only the guard knows where they are.
+
+### SearXNG's settings
+`server/relay/search/settings.yml` is mounted as SearXNG's configuration. It builds on SearXNG's defaults and changes:
+- **engines:** only `duckduckgo`, `bing`, `brave` and `wikipedia`. Fewer engines means fewer odd sources and fewer engines blocking you for too many requests. Add others from [the engine list](https://docs.searxng.org/user/configured_engines.html) if you like.
+- **`safe_search: 2`** (strict), and the guard asks for strict on every query too.
+- **`formats: [json]`**, which the guard needs. SearXNG returns 403 to JSON requests without it.
+- **`limiter: false`** and **`image_proxy: false`:** the limiter is for public instances and needs Redis; this one has a single client, the guard.
+
+The secret key comes from `SEARXNG_SECRET` and the contact address (Wikipedia's API asks for one) from `CONTACT_EMAIL`, both in `.env`. The image is `searxng/searxng:latest`; update it with the rest of the stack (`docker compose pull && docker compose up -d`), since search engines change their pages and SearXNG follows.
+
+### Set them up
+1. In the relay's `.env`: add `chat` to `COMPOSE_PROFILES`, and set
+   - `CONTACT_EMAIL`, shown to the sites the page reader visits and to Wikipedia;
+   - `SEARXNG_SECRET`, from `openssl rand -hex 32`;
+   - `FETCH_ALLOWED_CLIENTS`, the address of the machine running the kids' Open WebUI (comma-separated if several). kids-fetch refuses everyone else, and won't start without it.
+   - Optionally `KIDS_SEARCH_PORT` / `KIDS_FETCH_PORT` (default 8081 / 8082).
+2. `docker compose up -d`.
+3. Test from the machine running Open WebUI:
+   ```sh
+   curl -s 'http://<relay host>:8081/search?q=volcano&format=json&safesearch=2' | python3 -m json.tool | head -20
+   curl -s 'http://<relay host>:8082/fetch?url=https://en.wikipedia.org/wiki/Volcano' | head -c 300
+   ```
+   With the VLAN overlay, use `http://<KIDS_SEARCH_IP>:8080/...` and `http://<KIDS_FETCH_IP>:8080/...`, and your firewall must let that machine reach those two addresses on TCP 8080.
+
+**With the VLAN overlay** (recommended), kids-search and kids-fetch get their own addresses on the kids' VLAN and no host ports, so your gateway's kids' content filter and SafeSearch DNS apply to every search engine request and page they fetch. **Without it,** they publish ports 8081 and 8082 on the Docker host: don't forward those from the internet. kids-fetch only answers `FETCH_ALLOWED_CLIENTS`, but SearXNG answers anyone who can reach it.
+
+### What kids-fetch refuses
+Only `http`/`https` addresses whose every DNS answer is a public address (no LAN, loopback or link-local, so a link can't be used to probe your network), at most 3 redirects (each checked the same way), HTML or plain text only, at most 2 MB downloaded, and at most 6,000 characters of text returned.
+
+### If search doesn't work
+- **The guard answers but never cites anything:** check the two `curl` tests above first. If they work, the chat model decided no search was needed, or every result failed the check. Errors reaching search or the page reader show in the Open WebUI log (`docker compose logs` in `server/chat-guard`).
+- **`curl` gets 403:** `json` is missing from `formats` in `settings.yml`.
+- **Empty `results`:** an engine is blocking you (SearXNG's log, `docker logs fort-kids-search`, says which), or your content filter is blocking the engine itself. Allow the engines' domains in the kids' filter policy.
+- **kids-fetch answers 403:** the calling machine isn't in `FETCH_ALLOWED_CLIENTS`. With Docker Desktop or OrbStack on a Mac, the request may come from a different address than you'd expect: the kids-fetch log (`docker logs fort-kids-fetch`) prints the refused address.
 
 ## 4. Lock it down and install the guard
 ```sh
