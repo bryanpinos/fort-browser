@@ -1,0 +1,39 @@
+# Fort Chat: a separate Open WebUI just for the kids. Guide: docs/fort-chat.md.
+# Run it apart from any grown-up Open WebUI: its settings, accounts and guard
+# are the kids' only. After first start and creating your admin account, run
+# configure.py to lock it down and install the guard.
+# Env settings below only seed the FIRST start; after that they live in the
+# instance's database (configure.py and the Admin UI change them).
+services:
+  open-webui-kids:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui-kids
+    restart: unless-stopped
+    ports:
+      # Loopback until you've created the admin account; then bind it to the
+      # address your reverse proxy reaches (e.g. "192.0.2.20:3001:8080").
+      - "127.0.0.1:3001:8080"
+    env_file: .env   # WEBUI_SECRET_KEY=<openssl rand -hex 32>
+    environment:
+      - WEBUI_NAME=Fort Chat
+      - OPENAI_API_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      - OPENAI_API_KEY=lm-studio
+      - ENABLE_OLLAMA_API=false
+      - DEFAULT_USER_ROLE=pending
+      - ENABLE_WEB_SEARCH=false
+      - ENABLE_CODE_INTERPRETER=false
+      - ENABLE_CODE_EXECUTION=false
+      - ENABLE_IMAGE_GENERATION=false
+      - ENABLE_FOLLOW_UP_GENERATION=false
+      - ENABLE_AUTOCOMPLETE_GENERATION=false
+      - ENABLE_RETRIEVAL_QUERY_GENERATION=false
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_DIRECT_CONNECTIONS=false
+      - ENABLE_CHANNELS=false
+      - ENABLE_API_KEYS=false       # turn on in Admin only to run configure.py / the console
+    volumes:
+      - open-webui-kids:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  open-webui-kids:
