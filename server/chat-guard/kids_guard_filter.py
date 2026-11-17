@@ -98,11 +98,11 @@ class Filter:
         image_query: str = Field(default=Q_IMAGE, description="The yes/no question Shieldstral answers for each photo.")
         max_images: int = Field(default=4, description="Photos allowed in one message.")
         max_image_chars: int = Field(default=12_000_000, description="Largest embedded photo (base64 characters, about 9 MB).")
-        search_url: str = Field(default="http://192.168.40.11:8080/search",
-                                description="Kids' SearXNG on the Fort VLAN (Kids content filter + SafeSearch apply).")
+        search_url: str = Field(default="", description="Kids' SearXNG search URL (e.g. http://<host>:8081/search). "
+                                "Empty turns web search off. Run it behind your kids' content filter: docs/fort-chat.md.")
         search_results: int = Field(default=5, description="Checked results given to the model.")
-        fetch_url: str = Field(default="http://192.168.40.12:8080/fetch",
-                               description="Kids' page reader on the Fort VLAN (Kids content filter applies).")
+        fetch_url: str = Field(default="", description="Kids' page reader URL (e.g. http://<host>:8082/fetch). "
+                               "Empty turns reading linked pages off.")
         max_links: int = Field(default=3, description="Linked pages read per message.")
         auto_search: bool = Field(default=True, description="Let the chat model decide when a message needs the web.")
         chat_model: str = Field(default="gemma-4-31b-it", description="Model that makes the search decision.")
@@ -362,11 +362,11 @@ class Filter:
                 alert = await self._shield(Q_ALERT, recent) > self.valves.block_threshold
             kid_text = self._text_of(users[-1].get("content"))
             pages = []
-            if not latest["block"] and not alert:
+            if not latest["block"] and not alert and self.valves.fetch_url:
                 for url in list(dict.fromkeys(URL_RE.findall(kid_text)))[: self.valves.max_links]:
                     pages.append(await self._read_page(url.rstrip(".,!?;:")))
             results, searched = None, False
-            if not latest["block"] and not alert and kid_text.strip() and (
+            if self.valves.search_url and not latest["block"] and not alert and kid_text.strip() and (
                     wants_search or (self.valves.auto_search and await self._needs_search(kid_text))):
                 searched = True
                 results = await self._search(kid_text)

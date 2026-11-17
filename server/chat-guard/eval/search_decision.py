@@ -1,6 +1,6 @@
 """Does Gemma's yes/no 'needs the web?' match what a parent would expect? Prints accuracy and latency."""
-import json, math, sys, time, urllib.request as u
-URL = "http://127.0.0.1:1234/v1/chat/completions"
+import json, os, math, sys, time, urllib.request as u
+URL = os.environ.get("LMSTUDIO_URL", "http://localhost:1234") + "/v1/chat/completions"
 SEARCH = [
     "Who won the World Series this year?", "What's the weather going to be tomorrow in Boston?",
     "When is the next Minecraft update coming out?", "What are the newest Pokemon?",

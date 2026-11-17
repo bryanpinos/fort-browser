@@ -1,5 +1,5 @@
 """Re-checks replies with Qwen3Guard's official template (raw completion), then scores results.json."""
-import json, urllib.request
+import json, os, urllib.request
 from jinja2 import Template
 from cases import RESPONSES
 
@@ -10,7 +10,7 @@ for row, (expect, kid, reply) in zip(replies, RESPONSES):
     assert row["kid"] == kid
     prompt = tpl.render(messages=[{"role": "user", "content": kid}, {"role": "assistant", "content": reply}], add_generation_prompt=True)
     body = {"model": "guard-qwen", "temperature": 0, "max_tokens": 40, "prompt": prompt, "stop": ["<|im_end|>"]}
-    req = urllib.request.Request("http://192.168.1.20:1234/v1/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+    req = urllib.request.Request(os.environ.get("LMSTUDIO_URL", "http://localhost:1234") + "/v1/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     text = json.load(urllib.request.urlopen(req, timeout=60))["choices"][0]["text"].strip()
     lines = text.split("\n")
     row["qwen"] = lines[0].replace("Safety: ", "")
