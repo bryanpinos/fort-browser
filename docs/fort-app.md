@@ -20,6 +20,7 @@ Fort works without any server: install it, set a PIN, and it's a filtered browse
 Fort can only protect what goes through it. In **Settings › Screen Time** on the kid's iPad (or from your device with Family Sharing):
 - **Content & Privacy Restrictions › Allowed Apps & Features:** turn off **Safari** (and anything else that browses).
 - **iTunes & App Store Purchases:** set **Installing Apps** and **Deleting Apps** to **Don't Allow**.
+- **Content & Privacy Restrictions › App Store, Media, Web & Games › Apps:** set the limit to **16+** or **Allow All Apps**. Fort is rated 16+ on the App Store (any browser can reach the open web, and Apple rates for that), so a lower limit hides Fort. That's safe here: with app installs blocked, the age limit isn't what keeps other apps off the iPad.
 - **Make Fort the default browser:** Settings › Apps › Default Apps › Browser App › Fort. Then links tapped in Messages, Mail or games open in Fort, with the same checks.
 
 ## Home Screen shortcuts
