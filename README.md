@@ -2,6 +2,8 @@
 
 **A kids' web browser for iPad that only works through your home network, run on hardware you own.**
 
+**[Download on the App Store](https://apps.apple.com/app/fort-safe-home-browser/id6835171794)** (free, iPad).
+
 Fort is a browser for families who run their own network. Instead of another cloud filter and another subscription, it ties your kids' browsing to your home: your router's content filter, your rules, your hardware. No accounts, no subscription, no telemetry; nothing goes anywhere but to servers you run.
 
 - **Fort on its own:** a filtered browser with a PIN-protected parent area: allowed and blocked sites, strict SafeSearch, favorites, tabs, and a friendly block page ("this one stays outside the fort"). Can be the iPad's default browser, so links from other apps get the same checks.
