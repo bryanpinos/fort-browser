@@ -8,10 +8,14 @@ const FIELDS = [
   { key: 'reviewPages', title: 'Page review', hint: 'Send each page’s text home for Gemma to review and flag.' },
   { key: 'enforceSafeSearch', title: 'Strict SafeSearch', hint: 'Force strict mode on Google, Bing and DuckDuckGo.' },
   { key: 'searchEngine', title: 'Search engine', hint: 'Where searches typed in the address bar go. Google if not set.' },
+  { key: 'appLinks', title: 'Apps pages may open', hint: 'Some sites hand off to their app, like Roblox after signing in. One per line, e.g. roblox. Fort asks the kid before opening one.' },
   { key: 'parentPINHash', title: 'Parent PIN', hint: 'The PIN for Parent settings on the iPad. Only a hash is stored.' },
 ];
 const hostOf = s => { s = s.trim().toLowerCase(); if (!s) return ''; try { return new URL(s.includes('://') ? s : 'https://' + s).hostname.replace(/^www\./, 'www.'); } catch { return s; } };
 const ENGINES = { google: 'Google', bing: 'Bing', duckduckgo: 'DuckDuckGo' };
+// Same list as the app's AppLinks.neverAllowed: other browsers, Shortcuts, Settings, installs.
+const NEVER_APPS = new Set(['x-safari-http', 'x-safari-https', 'com-apple-mobilesafari-tab', 'x-web-search', 'googlechrome', 'googlechromes', 'googlechrome-x-callback', 'firefox', 'firefox-focus', 'fennec', 'microsoft-edge', 'microsoft-edge-http', 'microsoft-edge-https', 'opera-http', 'opera-https', 'brave', 'ddgquicklink', 'duckduckgo', 'onionhttp', 'onionhttps', 'orion', 'arc', 'ecosia', 'kagi', 'shortcuts', 'workflow', 'prefs', 'app-prefs', 'app-settings', 'itms', 'itms-apps', 'itms-appss', 'itms-services', 'itms-beta', 'macappstore']);
+const appScheme = s => s.trim().toLowerCase().replace(/:(\/\/)?$/, '');
 const validTemplate = s => { try { const u = new URL(s.replace('%s', 'q')); return u.protocol === 'https:' && !!u.hostname && s.includes('%s'); } catch { return false; } };
 const urlOf = s => { s = s.trim(); return s && !s.includes('://') ? 'https://' + s : s; };
 async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
@@ -23,10 +27,12 @@ function summary(key, v) {
   if (key === 'parentPINHash') return 'a PIN is set';
   if (typeof v === 'boolean') return v ? 'on' : 'off';
   if (key === 'searchEngine') return ENGINES[v] || v;
+  if (key === 'appLinks') return v.length ? v.join(', ') : 'none';
   return String(v);
 }
 function editor(key, v) {
   if (key === 'favorites') return `<div id="favs">${(v || []).map(favRow).join('')}</div><button data-addfav>+ Add favorite</button>`;
+  if (key === 'appLinks') return `<textarea rows="3" data-k="appLinks" placeholder="roblox">${esc((v || []).join('\n'))}</textarea><p class="hint">Fort never opens other browsers, Shortcuts, Settings or the App Store.</p>`;
   if (key === 'denylist' || key === 'allowlist') return `<textarea rows="5" data-k="${key}">${esc((v || []).join('\n'))}</textarea>${key === 'allowlist' ? '<p class="warn" data-allowwarn hidden>⚠️ Only the sites listed here will open.</p>' : ''}`;
   if (key === 'homeURL') return `<input type="url" data-k="homeURL" value="${esc(v || 'https://')}">`;
   if (key === 'searchEngine') { const custom = v && !ENGINES[v];
@@ -68,6 +74,12 @@ async function collect() {
       if (choice !== 'custom') out.searchEngine = choice;
       else { const t = sect.querySelector('[data-k=template]').value.trim();
         if (!validTemplate(t)) throw new Error('The custom search engine needs an https address with %s where the search words go.'); out.searchEngine = t; } }
+    else if (key === 'appLinks') { const apps = [...new Set(sect.querySelector('textarea').value.split(/[\n,]/).map(appScheme).filter(Boolean))];
+      const bad = apps.filter(a => !/^[a-z][a-z0-9+.-]{0,63}$/.test(a) || ['http', 'https', 'about'].includes(a));
+      const never = apps.filter(a => NEVER_APPS.has(a));
+      if (bad.length) throw new Error(`Not an app link name: ${bad.join(', ')}. Use the part before "://", e.g. roblox.`);
+      if (never.length) throw new Error(`Fort never opens ${never.join(', ')}.`);
+      out.appLinks = apps; }
     else if (key === 'homeURL') out.homeURL = urlOf(sect.querySelector('.body input').value);
     else if (key === 'parentPINHash') { const pin = sect.querySelector('.body input').value.trim();
       if (pin) { if (!/^\d{4,8}$/.test(pin)) throw new Error('The PIN must be 4 to 8 digits.'); out.parentPINHash = await sha256(pin); }

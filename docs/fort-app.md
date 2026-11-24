@@ -23,6 +23,9 @@ Fort can only protect what goes through it. In **Settings › Screen Time** on t
 - **Content & Privacy Restrictions › App Store, Media, Web & Games › Apps:** set the limit to **16+** or **Allow All Apps**. Fort is rated 16+ on the App Store (any browser can reach the open web, and Apple rates for that), so a lower limit hides Fort. That's safe here: with app installs blocked, the age limit isn't what keeps other apps off the iPad.
 - **Make Fort the default browser:** Settings › Apps › Default Apps › Browser App › Fort. Then links tapped in Messages, Mail or games open in Fort, with the same checks.
 
+## Links to other apps
+Some sites hand off to their own app, for example Roblox after you sign in or buy Robux (`roblox://…`). Fort opens only the apps you list under **Parent settings › Apps pages may open** (or `appLinks` in the [home config](home-config.md)), and asks first ("Open this in Roblox?"), so a page can't launch apps by itself. Any other app link shows "This page wants to open another app" instead of silently doing nothing. Fort never opens other browsers, Shortcuts, Settings or the App Store, even if listed. The name to list is the part of the link before `://`; the console's activity view shows refused app links, which is the easiest way to find it.
+
 ## Home Screen shortcuts
 `fort://open?url=<address>` opens Fort straight to a site. In the **Shortcuts** app: new shortcut › **Open URLs** › `fort://open?url=pbskids.org` › **Add to Home Screen**.
 
@@ -34,6 +37,7 @@ Every setting is one JSON document (`GateConfig`). You can export it, paste it o
 | `denylist`, `allowlist` | Site names. Blocked wins over allowed; an empty allowlist allows everything else. |
 | `enforceSafeSearch` | Strict mode on Google, Bing and DuckDuckGo. |
 | `searchEngine` | Address-bar searches: `"google"` (or left out), `"bing"`, `"duckduckgo"`, or a custom `"https://…%s…"` address (no forced safe search). An invalid value means Google. |
+| `appLinks` | Other apps a page may open, by link name: `["roblox"]`. Fort asks before opening one. Other browsers, Shortcuts, Settings and the App Store are never opened. Left out = none. |
 | `homeURL` | The home page. |
 | `favorites` | `[{"name": "PBS Kids", "url": "https://pbskids.org"}]` |
 | `proxy` | The relay: `{"kind": "relay", "host": "relay.example.com", "port": 8443, "authToken": "…"}` ([guide](relay.md)). |

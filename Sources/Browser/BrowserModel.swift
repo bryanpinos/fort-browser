@@ -19,6 +19,13 @@ final class BrowserModel: Identifiable {
     var blockedMessage: String?
     /// Set when Fort blocked a page; the tab then shows the block page.
     var block: Block?
+    /// A page asked to open another app the parent allowed; Fort asks first.
+    var appLinkRequest: AppLinkRequest?
+
+    struct AppLinkRequest: Equatable {
+        var url: URL
+        var app: String
+    }
 
     struct Block: Equatable {
         enum Reason: Equatable {

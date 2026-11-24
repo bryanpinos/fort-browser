@@ -1,6 +1,6 @@
 # Home config
 
-Change settings on every iPad from home: favorites, blocked and allowed sites, the home page, the search engine, page review, SafeSearch, even the parent PIN. Needs [the relay](relay.md).
+Change settings on every iPad from home: favorites, blocked and allowed sites, the home page, the search engine, apps pages may open, page review, SafeSearch, even the parent PIN. Needs [the relay](relay.md).
 
 ## How it works
 - The relay serves `config/fort.json` (every iPad) with `config/devices/<device-id>.json` layered on top (one iPad; its fields replace `fort.json`'s).

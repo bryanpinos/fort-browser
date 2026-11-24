@@ -145,9 +145,28 @@ struct BrowserView: UIViewRepresentable {
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
 
-            // Only http(s) and about: are allowed; no tel:, sms:, itms-apps: etc.
-            if let scheme = url.scheme?.lowercased(), !["http", "https", "about"].contains(scheme) {
+            // Fort itself loads only http(s) and about:. A link to another app
+            // opens only if the parent allowed that app, and only after the kid
+            // confirms; anything else is refused, with a banner for app links
+            // so the page doesn't just sit there.
+            let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+            switch AppLinks.decision(for: url, allowed: config.appLinks) {
+            case .web:
+                break
+            case .refuse:
                 logger.record(url: url, allowed: false, reason: "scheme")
+                decisionHandler(.cancel)
+                return
+            case .ask(let app):
+                logger.record(url: url, allowed: true, reason: "app link")
+                if isMainFrame { model.appLinkRequest = .init(url: url, app: app) }
+                decisionHandler(.cancel)
+                return
+            case .notAllowed(let app):
+                logger.record(url: url, allowed: false, reason: "app link")
+                if isMainFrame {
+                    model.blockedMessage = "This page wants to open another app (\(app)). Ask a grown-up to allow it."
+                }
                 decisionHandler(.cancel)
                 return
             }

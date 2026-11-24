@@ -22,6 +22,7 @@ struct ParentSettingsView: View {
     @State private var reviewPages = false
     @State private var engineChoice: EngineChoice = .google
     @State private var customEngineText = ""
+    @State private var appLinksText = ""
     @State private var favoritesText = ""
     @State private var dataMessage: String?
     @State private var confirmClearAll = false
@@ -146,6 +147,18 @@ struct ParentSettingsView: View {
                     Button("Clear everything", role: .destructive) { clearWebsiteData(all: true) }
                 } message: {
                     Text("This signs Fort out of every site (school accounts, games). Saved favorites and settings stay.")
+                }
+
+                Section {
+                    TextField("One per line, e.g. roblox", text: $appLinksText, axis: .vertical)
+                        .lineLimit(2...6).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    let refused = AppLinksEditor.refused(appLinksText)
+                    if !refused.isEmpty {
+                        Label("Fort never opens \(refused.joined(separator: ", ")).", systemImage: "info.circle")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: { Text("Apps pages may open") } footer: {
+                    Text("Some sites hand off to their app, like Roblox after signing in. Fort asks before opening one. It never opens other browsers, Shortcuts, Settings or the App Store.")
                 }
 
                 Section("General") {
@@ -295,7 +308,7 @@ struct ParentSettingsView: View {
     /// Plain names for the fields a home config can manage.
     static func homeLabels(_ keys: Set<String>) -> String {
         let names = ["favorites": "favorites", "denylist": "blocked sites", "allowlist": "allowed sites",
-                     "enforceSafeSearch": "safe search", "searchEngine": "search engine",
+                     "enforceSafeSearch": "safe search", "searchEngine": "search engine", "appLinks": "app links",
                      "homeURL": "home page", "reviewPages": "page review",
                      "parentPINHash": "parent PIN", "logEndpoint": "log endpoint", "probeURL": "probe URL",
                      "probeIntervalSeconds": "check interval"]
@@ -320,6 +333,7 @@ struct ParentSettingsView: View {
         let engine = SearchEngine(setting: draft.searchEngine)
         engineChoice = EngineChoice(engine)
         if case .custom(let template) = engine { customEngineText = template } else { customEngineText = "" }
+        appLinksText = (draft.appLinks ?? []).joined(separator: "\n")
         favoritesText = FavoritesStore.format(draft.favorites)
         dataMessage = nil
         certMessage = nil
@@ -342,6 +356,8 @@ struct ParentSettingsView: View {
             : nil
         cfg.reviewPages = proxyEnabled && proxyKind == .relay && reviewPages ? true : nil
         cfg.searchEngine = engineChoice.engine(custom: customEngineText).setting
+        let apps = AppLinksEditor.parse(appLinksText)
+        cfg.appLinks = apps.isEmpty ? nil : apps
         let parsedFavorites = FavoritesStore.parse(favoritesText)
         cfg.favorites = parsedFavorites.isEmpty ? nil : parsedFavorites
         cfg.allowlist = lines(allowText)
@@ -445,3 +461,21 @@ enum EngineChoice: CaseIterable, Hashable {
         }
     }
 }
+
+/// The "Apps pages may open" field: one scheme per line.
+enum AppLinksEditor {
+    /// Valid, allowed schemes in order, without duplicates.
+    static func parse(_ text: String) -> [String] {
+        var seen = Set<String>()
+        return text.split(whereSeparator: \.isNewline).compactMap { AppLinks.normalize(String($0)) }
+            .filter { !AppLinks.neverAllowed.contains($0) && seen.insert($0).inserted }
+    }
+
+    /// Entries Fort won't open: invalid, web, or never-allowed schemes.
+    static func refused(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter {
+            !$0.isEmpty && (AppLinks.normalize($0).map(AppLinks.neverAllowed.contains) ?? true)
+        }
+    }
+}
+

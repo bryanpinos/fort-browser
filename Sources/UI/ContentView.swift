@@ -58,6 +58,15 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             ParentSettingsView(incomingCertificate: $incomingCertificate)
         }
+        .alert(model.appLinkRequest.map { "Open this in \($0.app)?" } ?? "",
+               isPresented: Binding(get: { model.appLinkRequest != nil },
+                                    set: { if !$0 { model.appLinkRequest = nil } }),
+               presenting: model.appLinkRequest) { request in
+            Button("Open \(request.app)") { openApp(request) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This page wants to open another app.")
+        }
         .onChange(of: store.config) { _, newValue in
             tabs.apply(config: newValue)
             tabs.applyProxies(forwarder: forwarder, identities: identities)
@@ -173,6 +182,14 @@ struct ContentView: View {
         let identities = identities
         logger.identityProvider = { identities.identity() }
         logger.apply(ingest: ingest, reviewPages: config.reviewPages ?? false)
+    }
+
+    /// Hands an allowed app link to iOS. It fails if that app isn't installed.
+    private func openApp(_ request: BrowserModel.AppLinkRequest) {
+        let tab = model
+        UIApplication.shared.open(request.url) { opened in
+            if !opened { tab.blockedMessage = "\(request.app) isn't on this iPad." }
+        }
     }
 
     /// Settings stay reachable even while the gate is closed (e.g. to fix

@@ -26,8 +26,12 @@ async function showBrowsing(k) {
     const shown = rows.filter(r => what === 'all' || (what === 'blocked' ? r.allowed === 0 : (r.concern ?? 0) >= 2));
     $('#rows').innerHTML = shown.length ? `<table><tr><th>When</th><th>Site</th><th>What happened</th></tr>${shown.map(r => {
       const status = r.kind === 'page' ? (r.status === 'done' ? ((r.concern ?? 0) >= 2 ? `<span class="tag flag">⚠️ ${esc(r.category)}</span> ` : `<span class="tag ok">✓ ${esc(r.category || 'ok')}</span> `) + `<span class="muted">${esc(r.summary)}</span>` : '<span class="muted">page read, not reviewed</span>')
+        : r.reason === 'app link' ? (r.allowed === 0 ? '<span class="tag blocked">⛔ app not allowed</span>' : '<span class="tag ok">↗ asked to open the app</span>')
         : (r.allowed === 0 ? `<span class="tag blocked">⛔ blocked</span> <span class="muted">${esc(r.reason)}</span>` : '<span class="tag ok">✓ visited</span>');
-      return `<tr><td class="muted" style="white-space:nowrap">${when(r.ts)}</td><td><div class="host">${esc(r.host)}</div><div class="muted" style="font-size:12px">${esc((r.title || r.url || '').slice(0, 90))}</div></td><td>${status}</td></tr>`; }).join('')}</table>` : '<p class="muted">Nothing here.</p>';
+      // An app link (roblox://navigation) is named by its app, not by the part after "://".
+      const appLink = r.reason === 'app link' && /^[a-z][a-z0-9+.-]*:/i.test(r.url || '') && !/^https?:/i.test(r.url || '');
+      const site = appLink ? `${r.url.split(':')[0].toLowerCase()} app` : r.host;
+      return `<tr><td class="muted" style="white-space:nowrap">${when(r.ts)}</td><td><div class="host">${esc(site)}</div><div class="muted" style="font-size:12px">${esc((r.title || r.url || '').slice(0, 90))}</div></td><td>${status}</td></tr>`; }).join('')}</table>` : '<p class="muted">Nothing here.</p>';
   };
   $('#days').onchange = $('#what').onchange = render; await render();
 }

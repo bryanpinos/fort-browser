@@ -226,6 +226,16 @@ def _search_template(v):
     return "%s" in v and len(v) <= 500 and v.lower().startswith("https://") and _web_url(v.replace("%s", "q"))
 
 
+# Same list as the app's AppLinks.neverAllowed: other browsers, Shortcuts, Settings, installs.
+NEVER_APPS = {"x-safari-http", "x-safari-https", "com-apple-mobilesafari-tab", "x-web-search", "googlechrome", "googlechromes", "googlechrome-x-callback", "firefox", "firefox-focus", "fennec", "microsoft-edge", "microsoft-edge-http", "microsoft-edge-https", "opera-http", "opera-https", "brave", "ddgquicklink", "duckduckgo", "onionhttp", "onionhttps", "orion", "arc", "ecosia", "kagi", "shortcuts", "workflow", "prefs", "app-prefs", "app-settings", "itms", "itms-apps", "itms-appss", "itms-services", "itms-beta", "macappstore"}
+
+
+def _app_links(v):
+    return isinstance(v, list) and len(v) <= 50 and all(
+        isinstance(a, str) and re.fullmatch(r"[a-z][a-z0-9+.-]{0,63}", a) is not None
+        and a not in NEVER_APPS and a not in ("http", "https", "about") for a in v)
+
+
 def _host_list(v):
     return isinstance(v, list) and len(v) <= 500 and all(isinstance(h, str) and HOST.match(h) for h in v)
 
@@ -239,6 +249,7 @@ VALIDATORS = {
     "homeURL": _web_url,
     "enforceSafeSearch": lambda v: isinstance(v, bool),
     "reviewPages": lambda v: isinstance(v, bool),
+    "appLinks": _app_links,
     "searchEngine": lambda v: isinstance(v, str) and (v in ("google", "bing", "duckduckgo") or _search_template(v)),
     "parentPINHash": lambda v: isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v) is not None,
 }

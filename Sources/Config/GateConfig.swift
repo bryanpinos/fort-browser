@@ -32,6 +32,11 @@ struct GateConfig: Codable, Equatable {
     /// (no forced safe search). See `SearchEngine`.
     var searchEngine: String? = nil
 
+    /// URL schemes of other apps a page may open (e.g. ["roblox"]), after the
+    /// kid confirms. Other browsers, Shortcuts, Settings and the App Store are
+    /// never opened. Nil/empty = no app links. See `AppLinks`.
+    var appLinks: [String]? = nil
+
     /// Page shown on launch and when the Home button is tapped.
     var homeURL: URL = URL(string: "https://www.wikipedia.org")!
 
