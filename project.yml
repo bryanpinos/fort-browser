@@ -48,7 +48,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Fort
-        CFBundleShortVersionString: "1.0"
+        CFBundleShortVersionString: "1.1"
         CFBundleVersion: "8"
         # Only standard HTTPS/TLS: exempt, so uploads skip the export question.
         ITSAppUsesNonExemptEncryption: false
