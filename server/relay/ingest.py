@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS device_status (
     device TEXT PRIMARY KEY,
     default_browser TEXT,
     app_version TEXT,
-    updated TEXT NOT NULL
+    updated TEXT NOT NULL,
+    os_version TEXT
 );
 """
 
@@ -93,21 +94,26 @@ def blocked_at_home(host):
 
 
 APP_VERSION = re.compile(r"^[0-9A-Za-z .()-]{1,30}$")
+OS_VERSION = re.compile(r"^[0-9]{1,3}(\.[0-9]{1,3}){0,2}$")
 
 
 def record_status(device, headers):
     """What the iPad reported with its config fetch, for the parents' console."""
     browser = headers.get("x-fort-default-browser", "")
     version = headers.get("x-fort-app-version", "")
-    if browser not in ("yes", "no", "unknown") and not APP_VERSION.match(version):
+    os_version = headers.get("x-fort-os-version", "")
+    if browser not in ("yes", "no", "unknown") and not APP_VERSION.match(version) and not OS_VERSION.match(os_version):
         return
+    # A build that does not send the iPadOS version leaves os_version empty, so a
+    # version reported by an earlier build is never shown as current.
     with connect() as db:
-        db.execute("""INSERT INTO device_status (device, default_browser, app_version, updated) VALUES (?,?,?,?)
+        db.execute("""INSERT INTO device_status (device, default_browser, app_version, updated, os_version) VALUES (?,?,?,?,?)
                       ON CONFLICT(device) DO UPDATE SET default_browser=excluded.default_browser,
-                      app_version=excluded.app_version, updated=excluded.updated""",
+                      app_version=excluded.app_version, updated=excluded.updated, os_version=excluded.os_version""",
                    (device, browser if browser in ("yes", "no", "unknown") else None,
                     version if APP_VERSION.match(version) else None,
-                    datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    os_version if OS_VERSION.match(os_version) else None))
 
 
 def home_config(device):
@@ -239,6 +245,8 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     with connect() as db:
         db.executescript(SCHEMA)
+        if "os_version" not in [r[1] for r in db.execute("PRAGMA table_info(device_status)")]:
+            db.execute("ALTER TABLE device_status ADD COLUMN os_version TEXT")  # databases from before the column
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"fort-ingest listening on 127.0.0.1:{PORT}, db {DB}", flush=True)
     server.serve_forever()

@@ -95,6 +95,7 @@ services:
     restart: unless-stopped
     network_mode: "service:relay"
     depends_on: [relay]
+    user: "1000:10"
     command: ["python", "-u", "/monitor.py"]
     environment:
       MQTT_HOST: ${MQTT_HOST:?set MQTT_HOST in .env}
@@ -102,6 +103,7 @@ services:
     volumes:
       - ./monitor.py:/monitor.py:ro
       - ./certs:/certs:ro
+      - ./review:/data:ro            # optional: lets it republish each iPad's reported iPadOS version
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

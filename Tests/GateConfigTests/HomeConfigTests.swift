@@ -80,8 +80,10 @@ final class HomeConfigTests: XCTestCase {
         XCTAssertEqual(NetworkGate.relayConfigURL(for: proxy)?.absoluteString, "https://relay.example.com:8443/fort/config")
     }
 
-    func testStatusHeadersReportDefaultBrowserAndBuild() {
-        let headers = DeviceStatus.headers(defaultBrowser: "yes", appVersion: "1.0 (6)")
+    func testStatusHeadersReportDefaultBrowserBuildAndOS() {
+        let headers = DeviceStatus.headers(defaultBrowser: "yes", appVersion: "1.0 (6)", osVersion: "27.2.1")
+        XCTAssertEqual(headers["x-fort-os-version"], "27.2.1")
+        XCTAssertNotNil(DeviceStatus.osVersion.range(of: #"^\d+(\.\d+){0,2}$"#, options: .regularExpression))
         XCTAssertEqual(headers["x-fort-default-browser"], "yes")
         XCTAssertEqual(headers["x-fort-app-version"], "1.0 (6)")
         XCTAssertTrue(["yes", "no", "unknown"].contains(DeviceStatus.defaultBrowser))

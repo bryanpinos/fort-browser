@@ -1,6 +1,6 @@
 # Fort Parent
 
-Your console: each kid's browsing (visits, blocks, page-review flags) and Fort Chat conversations, whether Fort is their default browser and which build they run, and an editor for the [home config](home-config.md) that keeps every earlier version. **Sign-in is passkeys only** (Face ID / Touch ID, synced by iCloud Keychain). Needs [the relay](relay.md); Fort Chat is optional.
+Your console: each kid's browsing (visits, blocks, page-review flags) and Fort Chat conversations, whether Fort is their default browser, which build they run and which iPadOS their iPad is on, and an editor for the [home config](home-config.md) that keeps every earlier version. **Sign-in is passkeys only** (Face ID / Touch ID, synced by iCloud Keychain). Needs [the relay](relay.md); Fort Chat is optional.
 
 ## Set up
 ```sh

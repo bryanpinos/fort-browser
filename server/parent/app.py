@@ -168,12 +168,12 @@ def kids_summary():
         except Exception as e:
             chat_info = {"chats": None, "chat_error": type(e).__name__}
         try:
-            st = review_rows("SELECT default_browser, app_version, updated FROM device_status WHERE device=?", (dev,))
+            st = review_rows("SELECT * FROM device_status WHERE device=?", (dev,))
         except sqlite3.Error:
             st = []
         status = st[0] if st else {}
         out.append({"id": k["id"], "name": k["name"], "default_browser": status.get("default_browser"),
-                    "app_version": status.get("app_version"), "status_updated": status.get("updated"), **{x: counts[x] or 0 for x in ("visits_24h", "blocked_24h", "visits_7d", "flagged_7d")},
+                    "app_version": status.get("app_version"), "os_version": status.get("os_version"), "status_updated": status.get("updated"), **{x: counts[x] or 0 for x in ("visits_24h", "blocked_24h", "visits_7d", "flagged_7d")},
                     "last_seen": counts["last_seen"], **chat_info})
     return out
 

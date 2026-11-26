@@ -8,6 +8,7 @@ namespace reach only MQTT (and DNS) on the LAN. Standard library only.
 import json
 import os
 import socket
+import sqlite3
 import ssl
 import struct
 import time
@@ -22,6 +23,11 @@ CERT = "/certs/relay.crt"
 PREFIX = "fort_relay"
 STATUS = f"{PREFIX}/status"
 STATE = f"{PREFIX}/state"
+# Optional: what each iPad last reported (app build, iPadOS version), republished
+# so a patch-level check elsewhere on the network can read it. Only when the
+# review database is mounted (compose: ./review:/data:ro).
+REVIEW_DB = os.environ.get("REVIEW_DB", "/data/review.db")
+DEVICES = f"{PREFIX}/devices"
 INTERVAL = 60
 WINDOW = 60  # minutes kept for "last hour" counts
 
@@ -145,6 +151,21 @@ def discovery(mqtt):
         mqtt.publish(f"homeassistant/{component}/fort_relay/{key}/config", json.dumps(cfg), retain=True)
 
 
+def device_reports():
+    """[{device, app_version, os_version, updated}] or None if there is no database to read."""
+    if not os.path.exists(REVIEW_DB):
+        return None
+    db = sqlite3.connect(f"file:{REVIEW_DB}?mode=ro", uri=True, timeout=5)
+    try:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(device_status)")]
+        if "os_version" not in cols:
+            return None
+        rows = db.execute("SELECT device, app_version, os_version, updated FROM device_status ORDER BY device")
+        return [dict(zip(("device", "app_version", "os_version", "updated"), r)) for r in rows]
+    finally:
+        db.close()
+
+
 def main():
     increments = deque(maxlen=WINDOW)  # per-minute {key: increase}
     previous = None
@@ -172,6 +193,12 @@ def main():
                 state[k] = sum(i[k] for i in increments) if stats else None
             state["active_connections"] = stats.get("listener.0.0.0.0_8443.downstream_cx_active") if stats else None
             mqtt.publish(STATE, json.dumps(state), retain=True)
+            try:
+                devices = device_reports()
+                if devices is not None:
+                    mqtt.publish(DEVICES, json.dumps({"ts": int(time.time()), "devices": devices}), retain=True)
+            except sqlite3.Error as e:
+                print(f"device reports not published: {e}", flush=True)
             mqtt.ping()
         except Exception as e:
             print(f"error: {e!r}; reconnecting", flush=True)

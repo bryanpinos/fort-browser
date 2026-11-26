@@ -1,7 +1,8 @@
 import UIKit
 
 /// What this iPad reports home with each home-config fetch, for the parents'
-/// console: whether Fort is the default browser, and which build is running.
+/// console: whether Fort is the default browser, which build is running, and
+/// which iPadOS the iPad is on (so a parent can see an iPad that needs updating).
 enum DeviceStatus {
     private static let defaultBrowserKey = "fort.isDefaultBrowser"
 
@@ -22,9 +23,13 @@ enum DeviceStatus {
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
     }
 
+    /// The iPadOS version, e.g. "27.2.1".
+    static var osVersion: String { UIDevice.current.systemVersion }
+
     /// Headers added to the home-config request.
     static func headers(defaultBrowser: String = DeviceStatus.defaultBrowser,
-                        appVersion: String = DeviceStatus.appVersion) -> [String: String] {
-        ["x-fort-default-browser": defaultBrowser, "x-fort-app-version": appVersion]
+                        appVersion: String = DeviceStatus.appVersion,
+                        osVersion: String = DeviceStatus.osVersion) -> [String: String] {
+        ["x-fort-default-browser": defaultBrowser, "x-fort-app-version": appVersion, "x-fort-os-version": osVersion]
     }
 }
